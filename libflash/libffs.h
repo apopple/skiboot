@@ -36,9 +36,8 @@ struct ffs_handle;
 int ffs_open_flash(struct flash_chip *chip, uint32_t offset,
 		   uint32_t max_size, struct ffs_handle **ffs);
 
-/* TODO
-int ffs_open_image(void *image, uint32_t size, struct ffs_handle **ffs);
-*/
+int ffs_open_image(void *image, uint32_t size, uint32_t offset,
+		   struct ffs_handle **ffs);
 
 void ffs_close(struct ffs_handle *ffs);
 

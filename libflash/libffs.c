@@ -144,12 +144,55 @@ int ffs_open_flash(struct flash_chip *chip, uint32_t offset,
 	return rc;
 }
 
-#if 0 /* XXX TODO: For FW updates so we can copy nvram around */
 int ffs_open_image(void *image, uint32_t size, uint32_t offset,
 		   struct ffs_handle **ffs)
 {
+	struct ffs_hdr hdr;
+	struct ffs_handle *f;
+	int rc;
+
+	if (!ffs)
+		return FLASH_ERR_PARM_ERROR;
+	*ffs = NULL;
+
+	if ((offset + size) < offset)
+		return FLASH_ERR_PARM_ERROR;
+
+	/* Read flash header */
+	memcpy(&hdr, image + offset, sizeof(hdr));
+
+	/* Allocate ffs_handle structure and start populating */
+	f = malloc(sizeof(*f));
+	if (!f)
+		return FLASH_ERR_MALLOC_FAILED;
+	memset(f, 0, sizeof(*f));
+	f->type = ffs_type_image;
+	f->flash_offset = offset;
+	f->max_size = size;
+	f->chip = NULL;
+
+	/* Convert and check flash header */
+	rc = ffs_check_convert_header(&f->hdr, &hdr);
+	if (rc) {
+		FL_ERR("FFS: Error %d checking flash header\n", rc);
+		free(f);
+		return rc;
+	}
+
+	/*
+	 * Decide how much of the image to grab to get the whole
+	 * partition map.
+	 */
+	f->cached_size = f->hdr.block_size * f->hdr.size;
+	FL_DBG("FFS: Partition map size: 0x%x\n", f->cached_size);
+
+	/* TODO: we don't need a second copy, the in memory one is
+	 * already there. */
+	memcpy(f->cache, image + offset, sizeof(f->cached_size));
+	*ffs = f;
+
+	return 0;
 }
-#endif
 
 void ffs_close(struct ffs_handle *ffs)
 {
