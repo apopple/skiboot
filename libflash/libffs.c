@@ -23,6 +23,8 @@
 
 #include "libffs.h"
 
+#define MAX(a, b)     ((a) > (b) ? (a) : (b))
+
 enum ffs_type {
 	ffs_type_flash,
 	ffs_type_image,
@@ -179,25 +181,102 @@ int ffs_open_image(void *image, uint32_t size, uint32_t offset,
 		return rc;
 	}
 
-	/*
-	 * Decide how much of the image to grab to get the whole
-	 * partition map.
-	 */
-	f->cached_size = f->hdr.block_size * f->hdr.size;
-	FL_DBG("FFS: Partition map size: 0x%x\n", f->cached_size);
-
-	/* TODO: we don't need a second copy, the in memory one is
-	 * already there. */
-	memcpy(f->cache, image + offset, sizeof(f->cached_size));
+	f->cached_size = size - offset;
+	f->cache = image + offset;
 	*ffs = f;
+
+	return 0;
+}
+
+static int ffs_write_header(void *cache, uint32_t size, struct ffs_hdr *hdr)
+{
+	struct ffs_hdr new_hdr;
+
+	if (size < sizeof(*hdr))
+	    return FLASH_ERR_PARM_ERROR;
+
+	new_hdr.magic = cpu_to_be32(hdr->magic);
+	new_hdr.version = cpu_to_be32(hdr->version);
+	new_hdr.size = cpu_to_be32(hdr->size);
+	new_hdr.entry_size = cpu_to_be32(hdr->entry_size);
+	new_hdr.entry_count = cpu_to_be32(hdr->entry_count);
+	new_hdr.block_size = cpu_to_be32(hdr->block_size);
+	new_hdr.block_count = cpu_to_be32(hdr->block_count);
+	memset(new_hdr.resvd, 0, sizeof(new_hdr.resvd));
+	new_hdr.checksum = ffs_checksum(&new_hdr, sizeof(new_hdr)
+					- sizeof(new_hdr.checksum));
+	memcpy(cache, &new_hdr, sizeof(new_hdr));
+	return 0;
+}
+
+static int ffs_write_entry(void *cache, struct ffs_entry *entry)
+{
+	int i;
+	struct ffs_entry new_entry;
+
+	strncpy(new_entry.name, entry->name, PART_NAME_MAX + 1);
+	new_entry.base = cpu_to_be32(entry->base);
+	new_entry.size = cpu_to_be32(entry->size);
+	new_entry.pid = cpu_to_be32(entry->pid);
+	new_entry.id = cpu_to_be32(entry->id);
+	new_entry.type = cpu_to_be32(entry->type);
+	new_entry.flags = cpu_to_be32(entry->flags);
+	new_entry.actual = cpu_to_be32(entry->actual);
+	memset(&new_entry.resvd, 0, sizeof(*new_entry.resvd));
+	for(i = 0; i < FFS_USER_WORDS; i++)
+		new_entry.user.data[i] = cpu_to_be32(entry->user.data[i]);
+	for(i = 0; i < 4; i++)
+		new_entry.resvd[i] = cpu_to_be32(entry->resvd[i]);
+	new_entry.checksum = ffs_checksum(&new_entry, sizeof(new_entry)
+					  - sizeof(new_entry.checksum));
+	memcpy(cache, &new_entry, sizeof(new_entry));
+	return 0;
+}
+
+int ffs_create_image(void *image, uint32_t size, uint32_t block_size,
+		     uint32_t offset, struct ffs_handle **ffs)
+{
+	struct ffs_handle *f;
+
+	if (!ffs)
+		return FLASH_ERR_PARM_ERROR;
+	*ffs = NULL;
+
+	if ((offset + size) < offset)
+		return FLASH_ERR_PARM_ERROR;
+
+	/* Allocate ffs_handle structure and start populating */
+	f = malloc(sizeof(*f) + 10*sizeof(struct ffs_entry));
+	if (!f)
+		return FLASH_ERR_MALLOC_FAILED;
+	memset(f, 0, sizeof(*f));
+	f->type = ffs_type_image;
+	f->flash_offset = offset;
+	f->max_size = size;
+	f->chip = NULL;
+
+	/* Create the header */
+	f->hdr.magic = FFS_MAGIC;
+	f->hdr.version = 1;
+	f->hdr.size = 1;
+	f->hdr.entry_size = sizeof(struct ffs_entry);
+	f->hdr.entry_count = 0;
+	f->hdr.block_size = block_size;
+	f->hdr.block_count = size/block_size;
+	f->hdr.checksum = ffs_checksum(&f->hdr, sizeof(f->hdr)
+				       - sizeof(f->hdr.checksum));
+	f->cache = image + offset;
+	f->cached_size = size - offset;
+	*ffs = f;
+	ffs_write_header(f->cache, f->cached_size, &f->hdr);
 
 	return 0;
 }
 
 void ffs_close(struct ffs_handle *ffs)
 {
-	if (ffs->cache)
-		free(ffs->cache);
+//	if (ffs->cache)
+//		free(ffs->cache);
 	free(ffs);
 }
 
@@ -212,6 +291,56 @@ static struct ffs_entry *ffs_get_part(struct ffs_handle *ffs, uint32_t index,
 	if (out_offset)
 		*out_offset = offset;
 	return (struct ffs_entry *)(ffs->cache + offset);
+}
+
+int ffs_add_part(uint32_t index, const char *name, uint32_t offset, uint32_t size,
+		 uint32_t type, uint32_t flags, struct ffs_handle *ffs)
+{
+	struct ffs_entry entry;
+	uint32_t block_size = ffs->hdr.block_size;
+
+	if (offset % block_size)
+		return FLASH_ERR_PARM_ERROR;
+
+	ffs->hdr.entry_count = MAX(index + 1, ffs->hdr.entry_count);
+	ffs_write_header(ffs->cache, ffs->cached_size, &ffs->hdr);
+
+	strncpy(entry.name, name, PART_NAME_MAX + 1);
+	entry.base = offset/block_size;
+	entry.size = size % block_size ? (size/block_size) + 1 :
+		size/block_size;
+	entry.pid = FFS_PID_TOPLEVEL;
+	entry.id = index + 1;
+	entry.type = type;
+	entry.flags = flags;
+	entry.actual = size;
+	memset(entry.resvd, 0, sizeof(entry.resvd));
+	memset(entry.user.data, 0, sizeof(entry.user.data));
+	entry.checksum = ffs_checksum(&entry, sizeof(entry)
+				      - sizeof(entry.checksum));
+	ffs_write_entry(ffs_get_part(ffs, index, NULL), &entry);
+	return 0;
+}
+
+int ffs_get_user(struct ffs_handle *ffs, uint32_t index, uint32_t data[FFS_USER_WORDS])
+{
+	struct ffs_entry *entry = ffs_get_part(ffs, index, NULL);
+	int i;
+
+	for(i = 0; i < FFS_USER_WORDS; i++)
+		data[i] = be32_to_cpu(entry->user.data[i]);
+	return 0;
+}
+
+void ffs_add_user(struct ffs_handle *ffs, uint32_t index, uint32_t data[FFS_USER_WORDS])
+{
+	struct ffs_entry *entry = ffs_get_part(ffs, index, NULL);
+	int i;
+
+	for(i = 0; i < FFS_USER_WORDS; i++)
+		entry->user.data[i] = cpu_to_be32(data[i]);
+	entry->checksum = ffs_checksum(entry, sizeof(*entry) -
+				       sizeof(entry->checksum));
 }
 
 static int ffs_check_convert_entry(struct ffs_entry *dst, struct ffs_entry *src)
@@ -289,6 +418,17 @@ int ffs_part_info(struct ffs_handle *ffs, uint32_t part_idx,
 		*name = n;
 	}
 	return 0;
+}
+
+void ffs_info(struct ffs_handle *ffs, uint32_t *size,
+	     uint32_t *entry_count, uint32_t *block_size)
+{
+	if (size)
+		*size = ffs->hdr.size;
+	if (entry_count)
+		*entry_count = ffs->hdr.entry_count;
+	if (block_size)
+		*block_size = ffs->hdr.block_size;
 }
 
 int ffs_update_act_size(struct ffs_handle *ffs, uint32_t part_idx,

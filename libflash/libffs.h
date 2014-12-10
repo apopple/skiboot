@@ -33,6 +33,18 @@ struct ffs_handle;
 #define FFS_ERR_BAD_CKSUM	102
 #define FFS_ERR_PART_NOT_FOUND	103
 
+void ffs_add_user(struct ffs_handle *ffs, uint32_t index,
+		  uint32_t data[FFS_USER_WORDS]);
+int ffs_get_user(struct ffs_handle *ffs, uint32_t index,
+		 uint32_t data[FFS_USER_WORDS]);
+int ffs_add_part(uint32_t index, const char *name, uint32_t offset, uint32_t size,
+		 uint32_t type, uint32_t flags, struct ffs_handle *ffs);
+
+int ffs_create_image(void *image, uint32_t size, uint32_t block_size,
+		     uint32_t offset, struct ffs_handle **ffs);
+int ffs_write_image(void *image, uint32_t size, uint32_t offset,
+		    struct ffs_handle *ffs);
+
 int ffs_open_flash(struct flash_chip *chip, uint32_t offset,
 		   uint32_t max_size, struct ffs_handle **ffs);
 
@@ -43,6 +55,9 @@ void ffs_close(struct ffs_handle *ffs);
 
 int ffs_lookup_part(struct ffs_handle *ffs, const char *name,
 		    uint32_t *part_idx);
+
+void ffs_info(struct ffs_handle *ffs, uint32_t *size,
+	     uint32_t *entry_count, uint32_t *block_size);
 
 int ffs_part_info(struct ffs_handle *ffs, uint32_t part_idx,
 		  char **name, uint32_t *start,

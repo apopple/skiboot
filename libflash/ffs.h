@@ -75,6 +75,11 @@ enum type {
  */
 #define FFS_USER_WORDS 16
 
+/*
+ * Default block size of 4k
+ */
+#define FFS_BLOCK_SIZE 0x1000
+
 /**
  * struct ffs_entry - Partition entry
  *
