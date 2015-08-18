@@ -8,6 +8,7 @@ LD=$(CROSS)ld$(POSTFIX)
 AS=$(CROSS)as
 AR=$(CROSS)ar
 NM=$(CROSS)nm
+RUSTC=rustc --target ppc64
 OBJCOPY=$(CROSS)objcopy
 OBJDUMP=$(CROSS)objdump
 SIZE=$(CROSS)size
@@ -19,6 +20,13 @@ try = $(shell set -e; if ($(1)) >/dev/null 2>&1; \
 	else echo "$(3)"; fi )
 
 try-cflag = $(call try,$(1) $(2) -x c -c /dev/null -o /dev/null,$(2))
+
+# Rust flags
+LIBCORERS=$(SRC)/librust
+RCFLAGS := -C opt-level=2 -Z no-landing-pads -g -L $(LIBCORERS)
+
+# Location of Rust target file ppc64.json
+RUST_TARGET_PATH=$(SRC)
 
 # Base warnings
 CWARNS := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
@@ -84,14 +92,14 @@ CFLAGS += $(call try-cflag,$(CC),-Wjump-misses-init) \
 
 CFLAGS += $(CWARNS) $(OPTS) $(DBG)
 
-LDFLAGS := -m64 -static -nostdlib -pie 
+LDFLAGS := -m64 -static -nostdlib -pie
 LDFLAGS += -Wl,-Ttext-segment,$(LD_TEXT) -Wl,-N -Wl,--build-id=none
 LDFLAGS += -Wl,--no-multi-toc
 LDFLAGS += -mbig-endian -Wl,--oformat,elf64-powerpc
 
 LDRFLAGS=-melf64ppc
 # Debug stuff
-#LDFLAGS += -Wl,-v -Wl,-Map,foomap 
+#LDFLAGS += -Wl,-v -Wl,-Map,foomap
 
 AFLAGS := -D__ASSEMBLY__ -mbig-endian -m64
 
@@ -134,6 +142,7 @@ include/asm-offsets.h: asm/asm-offsets.s
 
 TARGET = skiboot
 
+include $(SRC)/librust/Makefile.inc
 include $(SRC)/asm/Makefile.inc
 include $(SRC)/core/Makefile.inc
 include $(SRC)/hw/Makefile.inc
@@ -147,13 +156,13 @@ include $(SRC)/$(DEVSRC)/Makefile.inc
 
 all: $(SUBDIRS) $(TARGET).lid $(TARGET).map extract-gcov
 
-OBJS := $(ASM) $(CORE) $(HW) $(PLATFORMS) $(LIBFDT) $(LIBFLASH)
+OBJS := $(LIBRUST) $(ASM) $(CORE) $(HW) $(PLATFORMS) $(LIBFDT) $(LIBFLASH)
 ifeq ($(PORE),1)
 OBJS += $(LIBPORE)
 endif
 OBJS += $(LIBC) $(CCAN) $(DEVSRC_OBJ)
 OBJS_NO_VER = $(OBJS)
-EXTRA_LIBS = -Wl,-lgcc
+EXTRA_LIBS = -Wl,-lgcc $(LIBCORERS)/*.rlib
 ALL_OBJS = $(OBJS) version.o
 
 ALL_OBJS_1 = $(ALL_OBJS) asm/dummy_map.o
@@ -225,7 +234,7 @@ clean:
 	$(RM) *.[odsa] $(SUBDIRS:%=%/*.[odsa])
 	$(RM) *.elf $(TARGET).lid *.map $(TARGET).lds
 	$(RM) include/asm-offsets.h version.c
+	$(RM) librust/*.rlib
 
 distclean: clean
 	$(RM) *~ $(SUBDIRS:%=%/*~) include/*~
-

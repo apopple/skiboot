@@ -1,0 +1,20 @@
+{
+    "arch": "powerpc",
+    "cpu": "pwr8",
+    "data-layout": "E-m:e-i64:64-n32:64",
+    "disable-redzone": true,
+    "executables": true,
+    "llvm-target": "powerpc64-none-eabi",
+    "morestack": false,
+    "os": "none",
+    "relocation-model": "static",
+    "target-endian": "big",
+    "target-pointer-width": "64",
+    "no-compiler-rt": true,
+    "pre-link-args": [
+        "-mcpu=powerpc64", "-mbig-endian"
+    ],
+    "post-link-args": [
+        "-lgcc"
+    ]
+}

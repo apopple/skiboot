@@ -48,5 +48,10 @@ DEVSRC=hdata
 #
 CONFIG := config.h
 
-include $(SRC)/Makefile.main
+#
+# Rust source directory for the version of rust installed, relative to
+# skiboot source directory
+#
+RUSTSRC ?= ../rust
 
+include $(SRC)/Makefile.main

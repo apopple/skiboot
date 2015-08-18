@@ -32,9 +32,21 @@ void *__memalign(size_t blocksize, size_t bytes, const char *location)
 	return p;
 }
 
+void *__rust_malloc(size_t bytes);
+void *__rust_malloc(size_t bytes)
+{
+	return __malloc(bytes, __location__);
+}
+
 void *__malloc(size_t bytes, const char *location)
 {
 	return __memalign(DEFAULT_ALIGN, bytes, location);
+}
+
+void __rust_free(void *p);
+void __rust_free(void *p)
+{
+	__free(p, __location__);
 }
 
 void __free(void *p, const char *location)
@@ -42,6 +54,12 @@ void __free(void *p, const char *location)
 	lock(&skiboot_heap.free_list_lock);
 	mem_free(&skiboot_heap, p, location);
 	unlock(&skiboot_heap.free_list_lock);
+}
+
+void *__rust_realloc(void *ptr, size_t size);
+void *__rust_realloc(void *ptr, size_t size)
+{
+	return __realloc(ptr, size, __location__);
 }
 
 void *__realloc(void *ptr, size_t size, const char *location)

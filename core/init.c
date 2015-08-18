@@ -553,6 +553,22 @@ static void do_ctors(void)
 		(*call)();
 }
 
+extern void rust_main(void);
+extern void *rust_bt_init(u32 base_addr);
+void *rust_bt;
+
+void rust_init(void);
+void rust_init(void)
+{
+	rust_main();
+}
+
+void test_rust_call(u32 i);
+void test_rust_call(u32 i)
+{
+	printf("Hello world number %d from rust in skiboot!\n", i);
+}
+
 void __noreturn main_cpu_entry(const void *fdt, u32 master_cpu)
 {
 	/*
@@ -720,6 +736,8 @@ void __noreturn main_cpu_entry(const void *fdt, u32 master_cpu)
 
 	/* Init SLW related stuff, including fastsleep */
 	slw_init();
+
+	rust_init();
 
 	op_display(OP_LOG, OP_MOD_INIT, 0x0002);
 

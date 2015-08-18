@@ -6,6 +6,7 @@
 *.rej
 *.swp
 .version
+*.rlib
 skiboot-nosection.elf
 skiboot*.elf
 skiboot.lds

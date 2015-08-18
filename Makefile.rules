@@ -42,6 +42,16 @@ ifeq ($(C),1)
 endif
 
 
+%.rlib : %.rs
+	$(call Q,RUSTC, $(RUSTC) $(RCFLAGS) -o $@ $<, $@)
+
+%.o : %.rs
+	$(call Q,RUSTC, $(RUSTC) $(RCFLAGS) --emit obj -o $@ $<, $@)
+
+# Rule to build core Rust libraries
+%.rlib: ../$(RUSTSRC)/src/%/lib.rs
+	$(call Q,RUSTC, $(RUSTC) $(RCFLAGS) -o $@ $<, $@)
+
 %.o : %.S include/asm-offsets.h
 	$(call Q,AS, $(CC) $(call cook_aflags,$@) -c $< -o $@, $@)
 
