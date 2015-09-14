@@ -403,10 +403,12 @@ void init_boot_cpu(void)
 	case PVR_TYPE_P8:
 		proc_gen = proc_gen_p8;
 		hile_supported = PVR_VERS_MAJ(mfspr(SPR_PVR)) >= 2;
+		p8_chip_id_bits = 6;
 		break;
 	case PVR_TYPE_P8NVL:
 		proc_gen = proc_gen_p8;
 		hile_supported = true;
+		p8_chip_id_bits = 5;
 		break;
 	default:
 		proc_gen = proc_gen_unknown;
@@ -544,7 +546,7 @@ void cpu_bringup(void)
 
 	op_display(OP_LOG, OP_MOD_CPU, 0x0000);
 
-	/* Tell everybody to chime in ! */	
+	/* Tell everybody to chime in ! */
 	prlog(PR_INFO, "CPU: Calling in all processors...\n");
 	cpu_secondary_start = 1;
 	sync();

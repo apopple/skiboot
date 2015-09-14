@@ -1550,8 +1550,8 @@ static int64_t phb3_msi_get_xive(void *data,
 	uint32_t chip, index, irq;
 	uint64_t ive;
 
-	chip = P8_IRQ_TO_CHIP(isn);
-	index = P8_IRQ_TO_PHB(isn);
+	chip = p8_irq_to_chip(isn);
+	index = p8_irq_to_phb(isn);
 	irq = PHB3_IRQ_NUM(isn);
 
 	if (chip != p->chip_id ||
@@ -1580,8 +1580,8 @@ static int64_t phb3_msi_set_xive(void *data,
 	uint64_t *cache, ive_num, data64, m_server, m_prio;
 	uint32_t *ive;
 
-	chip = P8_IRQ_TO_CHIP(isn);
-	index = P8_IRQ_TO_PHB(isn);
+	chip = p8_irq_to_chip(isn);
+	index = p8_irq_to_phb(isn);
 	ive_num = PHB3_IRQ_NUM(isn);
 
 	if (p->state == PHB3_STATE_BROKEN || !p->tbl_rtt)
@@ -1642,8 +1642,8 @@ static int64_t phb3_lsi_get_xive(void *data,
 	uint32_t chip, index, irq;
 	uint64_t lxive;
 
-	chip = P8_IRQ_TO_CHIP(isn);
-	index = P8_IRQ_TO_PHB(isn);
+	chip = p8_irq_to_chip(isn);
+	index = p8_irq_to_phb(isn);
 	irq = PHB3_IRQ_NUM(isn);
 
 	if (chip != p->chip_id	||
@@ -1668,8 +1668,8 @@ static int64_t phb3_lsi_set_xive(void *data,
 	uint32_t chip, index, irq, entry;
 	uint64_t lxive;
 
-	chip = P8_IRQ_TO_CHIP(isn);
-	index = P8_IRQ_TO_PHB(isn);
+	chip = p8_irq_to_chip(isn);
+	index = p8_irq_to_phb(isn);
 	irq = PHB3_IRQ_NUM(isn);
 
 	if (p->state == PHB3_STATE_BROKEN)
@@ -1935,7 +1935,7 @@ static void phb3_setup_for_link_down(struct phb3 *p)
 static void phb3_setup_for_link_up(struct phb3 *p)
 {
 	uint32_t reg32;
-	
+
 	/* Clear AER receiver error status */
 	phb3_pcicfg_write32(&p->phb, 0, p->aercap + PCIECAP_AER_CE_STATUS,
 			    PCIECAP_AER_CE_RECVR_ERR);
@@ -3041,7 +3041,7 @@ static int64_t phb3_err_inject_dma64(struct phb3 *p, uint32_t pe_no,
 				     uint64_t addr, uint64_t mask,
 				     bool is_write)
 {
-	return phb3_err_inject_dma(p, pe_no, addr, mask, is_write, true);	
+	return phb3_err_inject_dma(p, pe_no, addr, mask, is_write, true);
 }
 
 static int64_t phb3_err_inject(struct phb *phb, uint32_t pe_no,
@@ -3443,7 +3443,7 @@ static void phb3_setup_aib(struct phb3 *p)
 		phb3_write_reg_asb(p, PHB_AIB_RX_CMD_CRED,	0x0020000100020001);
 	else
 		phb3_write_reg_asb(p, PHB_AIB_RX_CMD_CRED,	0x0020000100010001);
-	
+
 	/* Init_4 - AIB rx data credit register */
 	if (p->rev >= PHB3_REV_VENICE_DD20)
 		phb3_write_reg_asb(p, PHB_AIB_RX_DATA_CRED,	0x0020002000010001);
@@ -4444,7 +4444,7 @@ static void phb3_probe_pbcq(struct dt_node *pbcq)
 	/* Set the interrupt routing stuff, 8 relevant bits in mask
 	 * (11 bits per PHB)
 	 */
-	val = P8_CHIP_IRQ_PHB_BASE(gcid, pno);
+	val = p8_chip_irq_phb_base(gcid, pno);
 	val = (val << 45);
 	xscom_write(gcid, pe_xscom + 0x1a, val);
 	xscom_write(gcid, pe_xscom + 0x1b, 0xff00000000000000ul);

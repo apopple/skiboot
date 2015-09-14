@@ -52,9 +52,9 @@
 #define PHB3_LSI_IRQ_COUNT		8
 #define PHB3_LSI_IRQ_MAX		(PHB3_LSI_IRQ_MIN+PHB3_LSI_IRQ_COUNT-1)
 
-#define PHB3_MSI_IRQ_BASE(chip, phb)	(P8_CHIP_IRQ_PHB_BASE(chip, phb) | \
+#define PHB3_MSI_IRQ_BASE(chip, phb)	(p8_chip_irq_phb_base(chip, phb) | \
 					 PHB3_MSI_IRQ_MIN)
-#define PHB3_LSI_IRQ_BASE(chip, phb)	(P8_CHIP_IRQ_PHB_BASE(chip, phb) | \
+#define PHB3_LSI_IRQ_BASE(chip, phb)	(p8_chip_irq_phb_base(chip, phb) | \
 					 PHB3_LSI_IRQ_MIN)
 #define PHB3_IRQ_NUM(irq)		(irq & 0x7FF)
 
@@ -94,7 +94,7 @@
  * All those tables have to be naturally aligned
  */
 
-/* RTT Table : 128KB - Maps RID to PE# 
+/* RTT Table : 128KB - Maps RID to PE#
  *
  * Entries are 2 bytes indexed by PCIe RID
  */

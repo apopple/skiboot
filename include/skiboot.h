@@ -125,6 +125,9 @@ enum proc_gen {
 };
 extern enum proc_gen proc_gen;
 
+/* Number of chip id bits available */
+extern uint32_t p8_chip_id_bits;
+
 /* Convert a 4-bit number to a hex char */
 extern char __attrconst tohex(uint8_t nibble);
 
@@ -263,4 +266,3 @@ extern bool slw_timer_ok(void);
 extern void fake_rtc_init(void);
 
 #endif /* __SKIBOOT_H */
-
