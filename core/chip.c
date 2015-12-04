@@ -88,7 +88,8 @@ void init_chips(void)
 		prlog(PR_NOTICE, "CHIP: Detected Simics simulator\n");
 	}
 	if (dt_node_is_compatible(dt_root, "qemu,powernv")) {
-		proc_chip_quirks |= QUIRK_NO_CHIPTOD | QUIRK_NO_PBA;
+		proc_chip_quirks |= QUIRK_NO_CHIPTOD | QUIRK_NO_PBA
+			| QUIRK_POWER_RADIX;
 		prlog(PR_NOTICE, "CHIP: Detected Qemu simulator\n");
 	}
 

@@ -120,6 +120,7 @@ enum proc_chip_quirks {
 	QUIRK_NO_OCC_IRQ       	= 0x00000010,
 	QUIRK_DISABLE_NAP	= 0x00000020,
 	QUIRK_SIMICS		= 0x00000040,
+	QUIRK_POWER_RADIX       = 0x00000080,
 } proc_chip_quirks;
 
 static inline bool chip_quirk(unsigned int q)

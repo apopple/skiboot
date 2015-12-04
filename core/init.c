@@ -661,6 +661,14 @@ void __noreturn main_cpu_entry(const void *fdt, u32 master_cpu)
 		enable_mambo_console();
 	if (chip_quirk(QUIRK_SIMICS))
 		enable_simics_console();
+
+	/* Do this here as init_boot_cpu is too early for chip_quirk */
+	/* FIXME: this hack should go away when qemu supports power9 xscoms etc */
+	if (chip_quirk(QUIRK_POWER_RADIX)) {
+		prlog(PR_NOTICE, "CHIP: Detected qemu POWER_RADIX Hacked CPU!\n");
+		proc_gen = proc_gen_p8;
+	}
+
 	xscom_init();
 	mfsi_init();
 
