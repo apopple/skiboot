@@ -30,20 +30,6 @@
 #define NPU_BRICK_TL_BAR_SIZE	0x20000
 #define NPU_BRICK_PL_BAR_SIZE	0x200000
 
-/* The config space of NPU device is emulated. We have different
- * bits to represent config register properties: readonly, write-
- * one-to-clear.
- */
-#define NPU_DEV_CFG_NORMAL      0
-#define NPU_DEV_CFG_RDONLY      1
-#define NPU_DEV_CFG_W1CLR       2
-#define NPU_DEV_CFG_MAX         3
-
-/* Bytes of the emulated NPU PCI device config space. We are
- * emulating PCI express device, not legacy one
- */
-#define NPU_DEV_CFG_SIZE	0x100
-
 /* Interrupt mapping
  *
  * NPU PHB doesn't support MSI interrupts. It only supports
@@ -66,31 +52,6 @@
  * hook to populate when initializing NPU device.
  */
 struct npu_dev;
-struct npu_dev_cap {
-	uint16_t		id;
-	uint16_t		start;
-	uint16_t		end;
-	struct npu_dev		*dev;
-	void			(*populate)(struct npu_dev_cap *cap);
-	struct list_node	link;
-};
-
-/* Config space access trap. */
-struct npu_dev_trap {
-	struct npu_dev		*dev;
-	uint32_t		start;
-	uint32_t		end;
-	void			*data;
-	int64_t			(*read)(struct npu_dev_trap *trap,
-					uint32_t offset,
-					uint32_t size,
-					uint32_t *data);
-	int64_t			(*write)(struct npu_dev_trap *trap,
-					 uint32_t offset,
-					 uint32_t size,
-					 uint32_t data);
-	struct list_node	link;
-};
 
 struct npu_dev_bar {
 	uint32_t		flags;
@@ -124,9 +85,9 @@ struct npu_dev {
 	struct pci_device	*pd;
 
 	struct npu		*npu;
-	uint8_t			*config[NPU_DEV_CFG_MAX];
-	struct list_head	capabilities;
-	struct list_head	traps;
+
+	/* The emulated configuration space for this device */
+	struct config_space	config_space;
 
 	/* Which PHY lanes this device is associated with */
 	uint16_t		lane_mask;
@@ -191,12 +152,14 @@ static inline void npu_ioda_sel(struct npu *p, uint32_t table,
 
 void npu_scom_init(struct npu_dev *dev);
 
-int64_t npu_dev_procedure_read(struct npu_dev_trap *trap,
+int64_t npu_dev_procedure_read(struct config_space *cfg,
+			       struct config_space_trap *trap,
 			       uint32_t offset,
 			       uint32_t size,
 			       uint32_t *data);
 
-int64_t npu_dev_procedure_write(struct npu_dev_trap *trap,
+int64_t npu_dev_procedure_write(struct config_space *cfg,
+				struct config_space_trap *trap,
 				uint32_t offset,
 				uint32_t size,
 				uint32_t data);
