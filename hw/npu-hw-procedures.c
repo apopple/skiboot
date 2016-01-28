@@ -19,6 +19,7 @@
 #include <pci.h>
 #include <interrupts.h>
 #include <npu-regs.h>
+#include <npu-cfg.h>
 #include <npu.h>
 #include <xscom.h>
 
@@ -506,12 +507,13 @@ static uint32_t get_procedure_status(struct npu_dev *dev)
 	return dev->procedure_status;
 }
 
-int64_t npu_dev_procedure_read(struct npu_dev_trap *trap,
-				      uint32_t offset,
-				      uint32_t size,
-				      uint32_t *data)
+int64_t npu_dev_procedure_read(struct config_space *cfg,
+			       struct config_space_trap *trap,
+			       uint32_t offset,
+			       uint32_t size,
+			       uint32_t *data)
 {
-	struct npu_dev *dev = trap->dev;
+	struct npu_dev *dev = container_of(cfg, struct npu_dev, config_space);
 	int64_t rc = OPAL_SUCCESS;
 
 	if (size != 4) {
@@ -546,12 +548,13 @@ int64_t npu_dev_procedure_read(struct npu_dev_trap *trap,
 	return rc;
 }
 
-int64_t npu_dev_procedure_write(struct npu_dev_trap *trap,
-				      uint32_t offset,
-				      uint32_t size,
-				      uint32_t data)
+int64_t npu_dev_procedure_write(struct config_space *cfg,
+				struct config_space_trap *trap,
+				uint32_t offset,
+				uint32_t size,
+				uint32_t data)
 {
-	struct npu_dev *dev = trap->dev;
+	struct npu_dev *dev = container_of(cfg, struct npu_dev, config_space);
 	const char *name;
 	int64_t rc = OPAL_SUCCESS;
 
