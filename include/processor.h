@@ -19,6 +19,11 @@
 
 #include <bitutils.h>
 
+/* TODO: Find correct defintion of MSR bits */
+#define MSR_TA		PPC_BIT(1)
+#define MSR_US		PPC_BIT(1)
+#define MSR_UV		PPC_BIT(1)
+
 /* P7 MSR bits */
 #define MSR_SF		PPC_BIT(0)	/* 64-bit mode */
 #define MSR_HV		PPC_BIT(3)	/* Hypervisor mode */
@@ -220,7 +225,7 @@ static inline void smt_very_low(void)	{ asm volatile("or 31,31,31");	}
 static inline unsigned long mfmsr(void)
 {
 	unsigned long val;
-	
+
 	asm volatile("mfmsr %0" : "=r"(val) : : "memory");
 	return val;
 }

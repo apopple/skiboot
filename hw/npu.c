@@ -119,6 +119,15 @@
 
 #define VENDOR_CAP_PCI_DEV_OFFSET 0x0d
 
+static inline void npu_ioda_sel(struct npu *p, uint32_t table,
+				    uint32_t addr, bool autoinc)
+{
+	out_be64(p->at_regs + NPU_IODA_ADDR,
+		 (autoinc ? NPU_IODA_AD_AUTOINC : 0)	|
+		 SETFIELD(NPU_IODA_AD_TSEL, 0ul, table)	|
+		 SETFIELD(NPU_IODA_AD_TADR, 0ul, addr));
+}
+
 /* Returns the scom base for the given link index */
 static uint64_t npu_link_scom_base(struct dt_node *dn, uint32_t scom_base,
 				   int index)
