@@ -29,86 +29,10 @@
 #include <npu-regs.h>
 #include <npu-cfg.h>
 #include <npu.h>
+#include <lock.h>
 #include <xscom.h>
 
-/*
- * Terminology:
- *
- *  Brick - A group of either 8 TX or 8 RX lanes
- *  Link - A group of 8 TX and 8 RX lanes
- *
- * Each link is represented in system software as an emulated PCI
- * device. Garrison has two chips each with 4 links, therefore there
- * are 8 emulated PCI devices in total.
- *
- *  +----------------------------------------------------------------+
- *  |              PBCQ3 (SCOM Base Address 0x2012c00)               |
- *  |               PHB3 (SCOM Base Address 0x9012c00)               |
- *  +----------------------------------------------------------------+
- *                          ||||||||  ||||||||
- *                          ||||||||  ||||||||
- *                          ||||||||  ||||||||
- *                          ||||||||  ||||||||
- *  +----------------------------------------------------------------+
- *  |                             PCIe x8                            |
- *  +----------------------------------------------------------------+
- *  |                               GPU0                             |
- *  +--------------------------------+-------------------------------+
- *  |           NV Link 1            |           NV Link 0           |
- *  +---------------+----------------+---------------+---------------+
- *  |      RX       |      TX        |      RX       |      TX       |
- *  +---------------+----------------+---------------+---------------+
- *      ||||||||        ||||||||         ||||||||        ||||||||
- *      ||||||||        ||||||||         ||||||||        ||||||||
- *      ||||||||        ||||||||         ||||||||        ||||||||
- *      ||||||||        ||||||||         ||||||||        ||||||||
- *  +---------------+----------------+---------------+---------------+
- *  |      TX       |      RX        |      TX       |      RX       |
- *  +---------------+----------------+---------------+---------------+
- *  |           Lanes [0:7]         PHY 0       Lanes [8:15]         |
- *  |               SCOM Base Address 0x8000080008010c3f             |
- *  +--------------------------------+-------------------------------+
- *  |          Link 0 NDL/NTL        |         Link 1 NTL/NDL        |
- *  |   SCOM Base Address 0x8013c00  |  SCOM Base Address 0x8013c40  |
- *  +--------------------------------+-------------------------------+
- *  |                                                                |
- *  |          Address Translation/AT (shared for all links)         |
- *  |                 SCOM Base Address 0x8013d80                    |
- *  |                                                                |
- *  +--------------------------------+-------------------------------+
- *  |          Link 3 NDL/NTL        |         Link 4 NTL/NDL        |
- *  |   SCOM Base Address 0x8013d00  |  SCOM Base Address 0x8013d40  |
- *  +--------------------------------+-------------------------------+
- *  |           Lanes [8:15]        PHY 1       Lanes [0:7]          |
- *  |               SCOM Base Address 0x8000080008010c7f             |
- *  +---------------+----------------+---------------+---------------+
- *  |      TX       |      RX        |      TX       |      RX       |
- *  +---------------+----------------+---------------+---------------+
- *      ||||||||        ||||||||         ||||||||        ||||||||
- *      ||||||||        ||||||||         ||||||||        ||||||||
- *      ||||||||        ||||||||         ||||||||        ||||||||
- *      ||||||||        ||||||||         ||||||||        ||||||||
- *  +---------------+----------------+---------------+---------------+
- *  |      RX       |      TX        |      RX       |      TX       |
- *  +---------------+----------------+---------------+---------------+
- *  |           NV Link 2            |           NV Link 3           |
- *  +--------------------------------+-------------------------------+
- *  |                               GPU1                             |
- *  +----------------------------------------------------------------+
- *  |                             PCIe x8                            |
- *  +----------------------------------------------------------------+
- *                          ||||||||  ||||||||
- *                          ||||||||  ||||||||
- *                          ||||||||  ||||||||
- *                          ||||||||  ||||||||
- *  +----------------------------------------------------------------+
- *  |               PHB2 (SCOM Base Address 0x9012800)               |
- *  |              PBCQ2 (SCOM Base Address 0x2012800)               |
- *  +----------------------------------------------------------------+
- *
- */
-
-#define OPAL_NPU_VERSION          0x02
+#define OPAL_NPU_VERSION          0x03
 
 #define PCIE_CAP_START	          0x40
 #define PCIE_CAP_END	          0x80
@@ -117,49 +41,80 @@
 
 #define VENDOR_CAP_PCI_DEV_OFFSET 0x0d
 
-static inline void npu_ioda_sel(struct npu *p, uint32_t table,
-				    uint32_t addr, bool autoinc)
+/* Stack SCOM register offsets */
+#define NPU_STCK_NDT_BAR		0x05
+#define  NPU_STCK_NDT_BAR0_ENABLE	PPC_BIT(0)
+#define  NPU_STCK_NDT_BAR0_BASE		PPC_BITMASK(2, 26)
+#define  NPU_STCK_NDT_BAR1_ENABLE	PPC_BIT(32)
+#define  NPU_STCK_NDT_BAR1_BASE		PPC_BITMASK(34, 58)
+#define NPU_STCK_MAX_PHY_BAR	  	0x06
+
+#define NPU_MMIO_SIZE			(16*1024*1024)
+#define NPU_SM_SIZE			0x20
+
+/* Convenience macro to part functions still to be implemented for P9/NPU2 */
+#define TODO() prerror("%s: Not implemented for P9/NPU2\n", __FUNCTION__)
+
+static inline void npu_ioda_sel(struct npu __unused *p, uint32_t __unused table,
+				uint32_t __unused addr, bool __unused autoinc)
 {
-	out_be64(p->at_regs + NPU_IODA_ADDR,
-		 (autoinc ? NPU_IODA_AD_AUTOINC : 0)	|
-		 SETFIELD(NPU_IODA_AD_TSEL, 0ul, table)	|
-		 SETFIELD(NPU_IODA_AD_TADR, 0ul, addr));
+	/* TODO: Update for NPU2 */
+
+	return;
 }
 
-/* Returns the scom base for the given link index */
-static uint64_t npu_link_scom_base(struct dt_node *dn, uint32_t scom_base,
-				   int index)
+/* Returns the scom base address for the stack this link belongs to */
+static uint64_t npu_link_scom_base(struct dt_node __unused *dn,
+				   uint32_t scom_base, int index)
 {
-	struct dt_node *link;
-	uint32_t link_index;
-	char namebuf[32];
+	/* stack0 base */
+	uint64_t base = scom_base + 0x11000;
+	uint64_t stck_size = 0x100;
 
-	snprintf(namebuf, sizeof(namebuf), "link@%x", index);
-	link = dt_find_by_name(dn, namebuf);
-	assert(link);
-	link_index = dt_prop_get_u32(link, "ibm,npu-link-index");
-	return scom_base + (link_index * NPU_LINK_SIZE);
+	/* Each stack contains two links */
+	return base + (index >> 1) * stck_size;
 }
 
-static uint64_t get_bar_size(uint64_t bar)
+static void npu_lock(struct phb *phb)
 {
-	return (1 << GETFIELD(NX_MMIO_BAR_SIZE, bar)) * 0x10000;
+	struct npu *p = phb_to_npu(phb);
+
+	lock(&p->lock);
 }
 
-/* Update the changes of the device BAR to link BARs */
+static void npu_unlock(struct phb *phb)
+{
+	struct npu *p = phb_to_npu(phb);
+
+	unlock(&p->lock);
+}
+
+/* Update the hardware BAR registers */
 static void npu_dev_bar_update(uint32_t gcid, struct npu_dev_bar *bar,
-			       bool enable)
+			       int link_index, bool enable)
 {
+	int i;
 	uint64_t val;
 
 	if (!bar->xscom)
 		return;
 
-	val = bar->base;
-	val = SETFIELD(NX_MMIO_BAR_SIZE, val, ilog2(bar->size / 0x10000));
-	if (enable)
-		val |= NX_MMIO_BAR_ENABLE;
-	xscom_write(gcid, bar->xscom, val);
+	xscom_read(gcid, bar->xscom, &val);
+
+	if (link_index % 2) {
+		/* Use NDT1 BAR for odd link indicies */
+		val = SETFIELD(NPU_STCK_NDT_BAR1_BASE, val, bar->base >> 17);
+		val = SETFIELD(NPU_STCK_NDT_BAR1_ENABLE, val, (uint64_t) enable);
+	} else {
+		/* Use NDT0 BAR for even link indicies */
+		val = SETFIELD(NPU_STCK_NDT_BAR0_BASE, val, bar->base >> 17);
+		val = SETFIELD(NPU_STCK_NDT_BAR0_ENABLE, val, (uint64_t) enable);
+	}
+
+	/* Each stack has 4 command busses which each have a copy of
+	 * the BAR registers which should be updated */
+	for (i = 0; i < 4; i++)
+		xscom_write(gcid, bar->xscom + i * NPU_SM_SIZE, val);
 }
 
 /* Trap for PCI command (0x4) to enable or disable device's BARs */
@@ -181,7 +136,7 @@ static int64_t npu_dev_cfg_write_cmd(struct config_space *cfg,
 	 * with hardware automatically.
 	 */
 	enable = !!(data & PCI_CFG_CMD_MEM_EN);
-	npu_dev_bar_update(dev->npu->chip_id, &dev->bar, enable);
+	npu_dev_bar_update(dev->npu->chip_id, &dev->bar, dev->index, enable);
 
 	/* Normal path to update PCI config buffer */
 	return OPAL_PARAMETER;
@@ -250,7 +205,7 @@ static int64_t npu_dev_cfg_write_bar(struct config_space *cfg,
 		bar->base |= ((uint64_t)data << 32);
 
 		NPU_DEV_CFG_NORMAL_RD(dev, PCI_CFG_CMD, 4, &pci_cmd);
-		npu_dev_bar_update(dev->npu->chip_id, bar,
+		npu_dev_bar_update(dev->npu->chip_id, bar, dev->index,
 				   !!(pci_cmd & PCI_CFG_CMD_MEM_EN));
 	}
 
@@ -366,9 +321,7 @@ static void npu_append_pci_phandle(struct dt_node *dn, u32 phandle)
 	unlock(&pci_npu_phandle_lock);
 }
 
-static int npu_dn_fixup(struct phb *phb,
-			struct pci_device *pd,
-			void *data __unused)
+static void npu_dn_fixup(struct phb *phb, struct pci_device *pd)
 {
 	struct npu *p = phb_to_npu(phb);
 	struct npu_dev *dev;
@@ -377,7 +330,7 @@ static int npu_dn_fixup(struct phb *phb,
 	assert(dev);
 
 	if (dev->phb || dev->pd)
-		return 0;
+		return;
 
 	/* Bind the emulated PCI device with the real one, which can't
 	 * be done until the PCI devices are populated. Once the real
@@ -393,34 +346,10 @@ static int npu_dn_fixup(struct phb *phb,
 
 		dt_add_property_cells(pd->dn, "ibm,gpu", dev->pd->dn->phandle);
 	}
-
-	return 0;
-}
-
-static void npu_phb_final_fixup(struct phb *phb)
-{
-	pci_walk_dev(phb, npu_dn_fixup, NULL);
 }
 
 static void npu_ioda_init(struct npu *p)
 {
-	uint64_t *data64;
-	uint32_t i;
-
-	/* LXIVT - Disable all LSIs */
-	for (i = 0; i < ARRAY_SIZE(p->lxive_cache); i++) {
-		data64 = &p->lxive_cache[i];
-		*data64 = SETFIELD(NPU_IODA_LXIVT_PRIORITY, 0ul, 0xff);
-		*data64 = SETFIELD(NPU_IODA_LXIVT_SERVER, *data64, 0);
-	}
-
-	/* PCT - Reset to reserved PE# */
-	for (i = 0; i < ARRAY_SIZE(p->pce_cache); i++) {
-		data64 = &p->pce_cache[i];
-		*data64 = SETFIELD(NPU_IODA_PCT_PE, 0ul, NPU_NUM_OF_PES);
-		*data64 |= NPU_IODA_PCT_LINK_ENABLED;
-	}
-
 	/* Clear TVT */
 	memset(p->tve_cache, 0, sizeof(p->tve_cache));
 }
@@ -435,144 +364,20 @@ static int64_t npu_ioda_reset(struct phb *phb, bool purge)
 		npu_ioda_init(p);
 	}
 
-	/* LIST */
-	npu_ioda_sel(p, NPU_IODA_TBL_LIST, 0, true);
-	for (i = 0; i < 8; i++)
-		out_be64(p->at_regs + NPU_IODA_DATA0, 0x1);
-
-	/* LIXVT */
-	npu_ioda_sel(p, NPU_IODA_TBL_LXIVT, 0, true);
-	for (i = 0; i < ARRAY_SIZE(p->lxive_cache); i++)
-		out_be64(p->at_regs + NPU_IODA_DATA0, p->lxive_cache[i]);
-
-	/* PCT */
-	npu_ioda_sel(p, NPU_IODA_TBL_PCT, 0, true);
-	for (i = 0; i < ARRAY_SIZE(p->pce_cache); i++)
-		out_be64(p->at_regs + NPU_IODA_DATA0, p->pce_cache[i]);
 
 	/* TVT */
 	npu_ioda_sel(p, NPU_IODA_TBL_TVT, 0, true);
+	TODO();
 	for (i = 0; i < ARRAY_SIZE(p->tve_cache); i++)
-		out_be64(p->at_regs + NPU_IODA_DATA0, p->tve_cache[i]);
+		continue;
+		//out_be64(p->at_regs + NPU_IODA_DATA0, p->tve_cache[i]);
 
 	return OPAL_SUCCESS;
 }
 
-static int npu_isn_valid(struct npu *p, uint32_t isn)
-{
-	if (p->chip_id != p8_irq_to_chip(isn) || p->index != 0 ||
-	    NPU_IRQ_NUM(isn) < NPU_LSI_IRQ_MIN ||
-	    NPU_IRQ_NUM(isn) > NPU_LSI_IRQ_MAX) {
-		NPUERR(p, "isn 0x%x not valid for this NPU\n", isn);
-		return false;
-	}
-
-	return true;
-}
-
-static int64_t npu_lsi_get_xive(void *data,
-				    uint32_t isn,
-				    uint16_t *server,
-				    uint8_t *prio)
-{
-	struct npu *p = data;
-	uint32_t irq = NPU_IRQ_NUM(isn);
-	uint64_t lxive;
-
-	if (!npu_isn_valid(p, isn))
-		return OPAL_PARAMETER;
-
-	/* The content is fetched from the cache, which requires
-	 * that the initial cache should be initialized with the
-	 * default values
-	 */
-	irq -= NPU_LSI_IRQ_MIN;
-	lxive = p->lxive_cache[irq];
-	*server = GETFIELD(NPU_IODA_LXIVT_SERVER, lxive);
-	*prio = GETFIELD(NPU_IODA_LXIVT_PRIORITY, lxive);
-
-	return OPAL_SUCCESS;
-}
-
-static int64_t npu_lsi_set_xive(void *data,
-				    uint32_t isn,
-				    uint16_t server,
-				    uint8_t prio)
-{
-	struct npu *p = data;
-	uint32_t irq = NPU_IRQ_NUM(isn);
-	uint64_t lxive;
-
-	if (!npu_isn_valid(p, isn))
-		return OPAL_PARAMETER;
-
-	/* Figure out LXIVT entry */
-	lxive = SETFIELD(NPU_IODA_LXIVT_SERVER, 0ul, server);
-	lxive = SETFIELD(NPU_IODA_LXIVT_PRIORITY, lxive, prio);
-
-	/* Cache LXIVT entry */
-	irq -= NPU_LSI_IRQ_MIN;
-	p->lxive_cache[irq] = lxive;
-
-	/* Update to LXIVT entry */
-	npu_ioda_sel(p, NPU_IODA_TBL_LXIVT, irq, false);
-	lxive = in_be64(p->at_regs + NPU_IODA_DATA0);
-	lxive = SETFIELD(NPU_IODA_LXIVT_SERVER, lxive, server);
-	lxive = SETFIELD(NPU_IODA_LXIVT_PRIORITY, lxive, prio);
-	out_be64(p->at_regs + NPU_IODA_DATA0, lxive);
-
-	return OPAL_SUCCESS;
-}
-
-static void npu_err_interrupt(void *data, uint32_t isn)
-{
-	struct npu *p = data;
-	uint32_t irq = NPU_IRQ_NUM(isn);
-
-	if (!npu_isn_valid(p, isn))
-		return;
-
-	/* There're 4 LSIs used for error reporting: 4/5 for data
-	 * link error reporting while 6/7 for frozen PE detection
-	 */
-	irq -= NPU_LSI_IRQ_MIN;
-	switch (irq) {
-	case 4 ... 5:
-		prerror("Invalid NPU error interrupt received\n");
-		break;
-	case 6 ... 7:
-		opal_update_pending_evt(OPAL_EVENT_PCI_ERROR,
-					OPAL_EVENT_PCI_ERROR);
-	}
-}
-
-/* LSIs (OS owned) */
-static const struct irq_source_ops npu_lsi_irq_ops = {
-	.get_xive	= npu_lsi_get_xive,
-	.set_xive	= npu_lsi_set_xive,
-};
-
-/* Error LSIs (skiboot owned) */
-static const struct irq_source_ops npu_err_lsi_irq_ops = {
-	.get_xive	= npu_lsi_get_xive,
-	.set_xive	= npu_lsi_set_xive,
-	.interrupt	= npu_err_interrupt,
-};
-
-static void npu_register_irq(struct npu *p)
-{
-	register_irq_source(&npu_lsi_irq_ops, p,
-			    p->base_lsi, 4);
-	register_irq_source(&npu_err_lsi_irq_ops, p,
-			    p->base_lsi + 4, 4);
-}
 
 static void npu_hw_init(struct npu *p)
 {
-	/* 3 MMIO setup for AT */
-	out_be64(p->at_regs + NPU_LSI_SOURCE_ID,
-		 SETFIELD(NPU_LSI_SRC_ID_BASE, 0ul, 0x7f));
-	out_be64(p->at_regs + NPU_INTREP_TIMER, 0x0ul);
 	npu_ioda_reset(&p->phb, false);
 }
 
@@ -626,7 +431,7 @@ static int64_t npu_map_pe_dma_window_real(struct phb *phb,
 	}
 
 	npu_ioda_sel(p, NPU_IODA_TBL_TVT, window_id, false);
-	out_be64(p->at_regs + NPU_IODA_DATA0, tve);
+	TODO();		//out_be64(p->at_regs + NPU_IODA_DATA0, tve);
 	p->tve_cache[window_id] = tve;
 
 	return OPAL_SUCCESS;
@@ -654,7 +459,7 @@ static int64_t npu_map_pe_dma_window(struct phb *phb,
 	 */
 	if (!tce_table_size) {
 		npu_ioda_sel(p, NPU_IODA_TBL_TVT, window_id, false);
-		out_be64(p->at_regs + NPU_IODA_DATA0, 0ul);
+		TODO();		//out_be64(p->at_regs + NPU_IODA_DATA0, 0ul);
 		p->tve_cache[window_id] = 0ul;
 		return OPAL_SUCCESS;
 	}
@@ -694,7 +499,7 @@ static int64_t npu_map_pe_dma_window(struct phb *phb,
 
 	/* Update to hardware */
 	npu_ioda_sel(p, NPU_IODA_TBL_TVT, window_id, false);
-	out_be64(p->at_regs + NPU_IODA_DATA0, data64);
+	TODO();		//out_be64(p->at_regs + NPU_IODA_DATA0, data64);
 	p->tve_cache[window_id] = data64;
 
 	return OPAL_SUCCESS;
@@ -710,8 +515,6 @@ static int64_t npu_set_pe(struct phb *phb,
 {
 	struct npu *p = phb_to_npu(phb);
 	struct npu_dev *dev;
-	uint32_t link_idx;
-	uint64_t *data64;
 
 	/* Sanity check */
 	if (action != OPAL_MAP_PE &&
@@ -727,9 +530,6 @@ static int64_t npu_set_pe(struct phb *phb,
 	if ((bdfn >> 8) || !dev)
 		return OPAL_PARAMETER;
 
-	link_idx = dev->index;
-	dev->pe_num = pe_num;
-
 	/* Separate links will be mapped to different PEs */
 	if (bcompare != OpalPciBusAll ||
 	    dcompare != OPAL_COMPARE_RID_DEVICE_NUMBER ||
@@ -737,18 +537,7 @@ static int64_t npu_set_pe(struct phb *phb,
 		return OPAL_UNSUPPORTED;
 
 	/* Map the link to the corresponding PE */
-	data64 = &p->pce_cache[link_idx];
-	if (action == OPAL_MAP_PE)
-		*data64 = SETFIELD(NPU_IODA_PCT_PE, *data64,
-				   pe_num);
-	else
-		*data64 = SETFIELD(NPU_IODA_PCT_PE, *data64,
-				   NPU_NUM_OF_PES);
-
-	*data64 |= NPU_IODA_PCT_LINK_ENABLED;
-
-	npu_ioda_sel(p, NPU_IODA_TBL_PCT, link_idx, false);
-	out_be64(p->at_regs + NPU_IODA_DATA0, *data64);
+	/* XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX */
 
 	return OPAL_SUCCESS;
 }
@@ -766,13 +555,6 @@ static int64_t npu_power_state(struct phb *phb __unused)
 	return OPAL_SHPC_POWER_ON;
 }
 
-static int64_t npu_hreset(struct phb *phb __unused)
-{
-	prlog(PR_DEBUG, "NPU: driver should call reset procedure here\n");
-
-	return OPAL_SUCCESS;
-}
-
 static int64_t npu_freset(struct phb *phb __unused)
 {
 	/* FIXME: PHB fundamental reset, which need to be
@@ -782,7 +564,7 @@ static int64_t npu_freset(struct phb *phb __unused)
 	return OPAL_SUCCESS;
 }
 
-static int64_t npu_freeze_status(struct phb *phb,
+static int64_t npu_freeze_status(struct phb *phb __unused,
 				     uint64_t pe_number __unused,
 				     uint8_t *freeze_state,
 				     uint16_t *pci_error_type __unused,
@@ -794,11 +576,7 @@ static int64_t npu_freeze_status(struct phb *phb,
 	 * introduce another PHB callback to translate it. For now,
 	 * it keeps the skiboot PCI enumeration going.
 	 */
-	struct npu *p = phb_to_npu(phb);
-	if (p->fenced)
-		*freeze_state = OPAL_EEH_STOPPED_MMIO_DMA_FREEZE;
-	else
-		*freeze_state = OPAL_EEH_STOPPED_NOT_FROZEN;
+	*freeze_state = OPAL_EEH_STOPPED_NOT_FROZEN;
 	return OPAL_SUCCESS;
 }
 
@@ -821,81 +599,9 @@ NPU_DEV_CFG_WRITE(8, u8, bdfn_to_cfg)
 NPU_DEV_CFG_WRITE(16, u16, bdfn_to_cfg)
 NPU_DEV_CFG_WRITE(32, u32, bdfn_to_cfg)
 
-static int64_t npu_eeh_next_error(struct phb *phb,
-				  uint64_t *first_frozen_pe,
-				  uint16_t *pci_error_type,
-				  uint16_t *severity)
-{
-	struct npu *p = phb_to_npu(phb);
-	int i;
-	uint64_t result = 0;
-	*first_frozen_pe = -1;
-	*pci_error_type = OPAL_EEH_NO_ERROR;
-	*severity = OPAL_EEH_SEV_NO_ERROR;
-
-	if (p->fenced) {
-		*pci_error_type = OPAL_EEH_PHB_ERROR;
-		*severity = OPAL_EEH_SEV_PHB_FENCED;
-		return OPAL_SUCCESS;
-	}
-
-	npu_ioda_sel(p, NPU_IODA_TBL_PESTB, 0, true);
-	for (i = 0; i < NPU_NUM_OF_PES; i++) {
-		result = in_be64(p->at_regs + NPU_IODA_DATA0);
-		if (result > 0) {
-			*first_frozen_pe = i;
-			*pci_error_type = OPAL_EEH_PE_ERROR;
-			*severity = OPAL_EEH_SEV_PE_ER;
-			break;
-		}
-	}
-
-	return OPAL_SUCCESS;
-}
-
-
-/* Sets the NPU to trigger an error when a DMA occurs */
-static int64_t npu_err_inject(struct phb *phb, uint32_t pe_num,
-			      uint32_t type, uint32_t func __unused,
-			      uint64_t addr __unused, uint64_t mask __unused)
-{
-	struct npu *p = phb_to_npu(phb);
-	struct npu_dev *dev = NULL;
-	int i;
-
-	if (pe_num > NPU_NUM_OF_PES) {
-		prlog(PR_ERR, "NPU: error injection failed, bad PE given\n");
-		return OPAL_PARAMETER;
-	}
-
-	for (i = 0; i < p->total_devices; i++) {
-		if (p->devices[i].pe_num == pe_num) {
-			dev = &p->devices[i];
-			break;
-		}
-	}
-
-	if (!dev) {
-		prlog(PR_ERR, "NPU: couldn't find device with PE %x\n", pe_num);
-		return OPAL_PARAMETER;
-	}
-
-	/* TODO: extend this to conform to OPAL injection standards */
-	if (type > 1) {
-		prlog(PR_ERR, "NPU: invalid error injection type\n");
-		return OPAL_PARAMETER;
-	} else if (type == 1) {
-		/* Emulate fence mode. */
-		p->fenced = true;
-	} else {
-		/* Cause a freeze with an invalid MMIO write. */
-		in_be64((void *)dev->bar.base);
-	}
-
-	return OPAL_SUCCESS;
-}
-
 static const struct phb_ops npu_ops = {
+	.lock			= npu_lock,
+	.unlock			= npu_unlock,
 	.cfg_read8		= config_space_read8,
 	.cfg_read16		= config_space_read16,
 	.cfg_read32		= config_space_read32,
@@ -904,7 +610,7 @@ static const struct phb_ops npu_ops = {
 	.cfg_write32		= config_space_write32,
 	.choose_bus		= NULL,
 	.device_init		= NULL,
-	.phb_final_fixup	= npu_phb_final_fixup,
+	.device_node_fixup	= npu_dn_fixup,
 	.presence_detect	= NULL,
 	.ioda_reset		= npu_ioda_reset,
 	.papr_errinjct_reset	= NULL,
@@ -924,15 +630,15 @@ static const struct phb_ops npu_ops = {
 	.power_state		= npu_power_state,
 	.slot_power_off		= NULL,
 	.slot_power_on		= NULL,
-	.hot_reset		= npu_hreset,
+	.hot_reset		= NULL,
 	.fundamental_reset	= npu_freset,
 	.complete_reset		= NULL,
 	.poll			= NULL,
 	.eeh_freeze_status	= npu_freeze_status,
 	.eeh_freeze_clear	= NULL,
 	.eeh_freeze_set		= NULL,
-	.next_error		= npu_eeh_next_error,
-	.err_inject		= npu_err_inject,
+	.next_error		= NULL,
+	.err_inject		= NULL,
 	.get_diag_data		= NULL,
 	.get_diag_data2		= NULL,
 	.set_capi_mode		= NULL,
@@ -946,70 +652,53 @@ static void assign_mmio_bars(uint32_t gcid, uint32_t xscom,
 	struct npu_dev_bar bar;
 	struct dt_node *link;
 
-	/* Configure BAR selection.
+	/* Configure BAR selection. The below addresses come from the
+	 * P9 memory map.
 	 *
-	 * Currently, each PHY contains 2 links and each link has 2
-	 * BARs. The first BAR is assigned to the DLTL region which is
-	 * what the kernel uses. The second BAR is either assigned to
-	 * either the PL or AT region or unassigned. The PL0/PL1/AT
-	 * MMIO regions are not exposed to the kernel so we assigned
-	 * them at the start of the available memory area followed by
-	 * the DLTL regions. So we end up with the following memory
-	 * map (assuming we're given a memory region starting at
-	 * 0x3fff000000000):
+	 * Each stack contains 3 NDT_BAR registers containing the BARs
+	 * for two links. Each of the 3 NDT_BARs within the same stack
+	 * must be set to the same value. There are three stacks in
+	 * total therefore there are 6 links.
 	 *
-	 * Link#0-BAR#0: NTL/NDL BAR (128KB) - 0x3fff000420000
-	 * Link#0-BAR#1:     PL0 BAR (  2MB) - 0x3fff000000000
-	 * Link#1-BAR#0: NTL/NDL BAR (128KB) - 0x3fff000440000
-	 * Link#1-BAR#1:      AT BAR ( 64KB) - 0x3fff000400000
-	 * Link#2-BAR#0: NTL/NDL BAR (128KB) - 0x3fff000460000
-	 * Link#2-BAR#1:     PL1 BAR (  2MB) - 0x3fff000200000
-	 * Link#3-BAR#0: NTL/NDL BAR (128KB) - 0x3fff000480000
-	 * Link#3-BAR#1:  UNASSIGNED
+	 * There are also generation registers. These are assigned to
+	 * the second BAR in the emulated PCI devices and so their addresses
+	 * must respect the Linux ordering with respect to the DL bars.
+	 *
+	 * Link#0-NDT_BAR (128KB) - 0x6030201000000
+	 * Link#1-NDT_BAR (128KB) - 0x6030201020000
+	 * Link#2-NDT_BAR (128KB) - 0x6030201040000
+	 * Link#3-NDT_BAR (128KB) - 0x6030201060000
+	 * Link#4-NDT_BAR (128KB) - 0x6030201080000
+	 * Link#5-NDT_BAR (128KB) - 0x60302010c0000
+	 *
+	 * There are also a series of ATS, XTS, PHY and NPU
+	 * BARs. These are not exposed to the kernel via the emulated
+	 * PCI devices so their ordering does not matter. Only the PHY
+	 * and NPU BARs are used by skiboot.
+	 *
+	 * NPU_BAR (16MB) - 0x6030200000000
+	 * PHY0_BAR (2MB) - 0x6030201200000
+	 * PHY1_BAR (2MB) - 0x6030201400000
 	 */
-	xscom_write(gcid, xscom + NPU_AT_SCOM_OFFSET + NX_BAR,
-		    0x0211000043500000);
 
-	xscom_read(gcid, npu_link_scom_base(npu_dn, xscom, 0) + NX_MMIO_BAR_0,
-		   &mem_start);
-	mem_start = GETFIELD(NX_MMIO_BAR_BASE, mem_start) << 12;
-
-	xscom_read(gcid, npu_link_scom_base(npu_dn, xscom, 5) + NX_MMIO_BAR_0,
-		   &mem_end);
-	mem_end = (GETFIELD(NX_MMIO_BAR_BASE, mem_end) << 12) +
-		get_bar_size(mem_end);
-
-	/* PL0 BAR comes first at 0x3fff000000000 */
-	bar.xscom = npu_link_scom_base(npu_dn, xscom, 0) + NX_MMIO_BAR_1;
-	bar.base = mem_start;
-	bar.size = NX_MMIO_PL_SIZE;
-	npu_dev_bar_update(gcid, &bar, true);
-
-	/* PL1 BAR */
-	bar.xscom = npu_link_scom_base(npu_dn, xscom, 4) + NX_MMIO_BAR_1;
-	bar.base += bar.size;
-	bar.size = NX_MMIO_PL_SIZE;
-	npu_dev_bar_update(gcid, &bar, true);
-
-	/* Then the AT BAR */
-	bar.xscom = npu_link_scom_base(npu_dn, xscom, 1) + NX_MMIO_BAR_1;
-	bar.base += bar.size;
-	bar.size = NX_MMIO_AT_SIZE;
-	npu_dev_bar_update(gcid, &bar, true);
+	mem_start = 0x6030201000000;
+	mem_end = 0x6030201100000;
 
 	/* Now we configure all the DLTL BARs. These are the ones
 	 * actually exposed to the kernel. */
-	mm_win[0] = bar.base + bar.size;
+	bar.base = mem_start;
+	mm_win[0] = bar.base;
 	dt_for_each_node(npu_dn, link) {
 		uint32_t index;
 
 		index = dt_prop_get_u32(link, "ibm,npu-link-index");
-		bar.xscom = npu_link_scom_base(npu_dn, xscom, index) +
-			NX_MMIO_BAR_0;
-		bar.base += bar.size;
+		bar.xscom = npu_link_scom_base(npu_dn, xscom, index)
+			+ NPU_STCK_NDT_BAR;
 		bar.size = NX_MMIO_DL_SIZE;
 		bar.base = ALIGN_UP(bar.base, bar.size);
-		npu_dev_bar_update(gcid, &bar, false);
+		npu_dev_bar_update(gcid, &bar, index, true);
+
+		bar.base += bar.size;
 	}
 	mm_win[1] = (bar.base + bar.size) - mm_win[0];
 
@@ -1018,6 +707,24 @@ static void assign_mmio_bars(uint32_t gcid, uint32_t xscom,
 	 * overlapping BARs which will xstop the machine randomly in
 	 * the future.*/
 	assert(bar.base + bar.size <= mem_end);
+
+	/* Now NPU BAR which is the PHY_BAR of link 5/stack 2 */
+	bar.xscom = npu_link_scom_base(npu_dn, xscom, 5) + NPU_STCK_MAX_PHY_BAR;
+	bar.size = NPU_MMIO_SIZE;
+	bar.base = 0x6030200000000;
+	npu_dev_bar_update(gcid, &bar, 1, true);
+	prlog(PR_INFO, "NPU Version: 0x%016llx\n", in_be64((uint64_t *) (bar.base + 0x720080)));
+
+	/* And finally map the two PHY bars which are in stack 0 and 1 */
+	bar.xscom = npu_link_scom_base(npu_dn, xscom, 0) + NPU_STCK_MAX_PHY_BAR;
+	bar.size = NX_MMIO_PL_SIZE;
+	bar.base = 0x6030201200000;
+	npu_dev_bar_update(gcid, &bar, 1, true);
+
+	bar.xscom = npu_link_scom_base(npu_dn, xscom, 2) + NPU_STCK_MAX_PHY_BAR;
+	bar.size = NX_MMIO_PL_SIZE;
+	bar.base = 0x6030201400000;
+	npu_dev_bar_update(gcid, &bar, 1, true);
 }
 
 /* Probe NPU device node and create PCI root device node
@@ -1027,8 +734,8 @@ static void assign_mmio_bars(uint32_t gcid, uint32_t xscom,
 static void npu_probe_phb(struct dt_node *dn)
 {
 	struct dt_node *np;
-	uint32_t gcid, index, phb_index, xscom;
-	uint64_t at_bar[2], mm_win[2], val;
+	uint32_t gcid, index, xscom;
+	uint64_t mm_win[2];
 	uint32_t links = 0;
 	char *path;
 
@@ -1036,7 +743,6 @@ static void npu_probe_phb(struct dt_node *dn)
 	path = dt_get_path(dn);
 	gcid = dt_get_chip_id(dn);
 	index = dt_prop_get_u32(dn, "ibm,npu-index");
-	phb_index = dt_prop_get_u32(dn, "ibm,phb-index");
 	dt_for_each_compatible(dn, np, "ibm,npu-link")
 		links++;
 
@@ -1050,21 +756,8 @@ static void npu_probe_phb(struct dt_node *dn)
 
 	assign_mmio_bars(gcid, xscom, dn, mm_win);
 
-	/* Retrieve AT BAR */
-	xscom_read(gcid, npu_link_scom_base(dn, xscom, 1) + NX_MMIO_BAR_1,
-		   &val);
-	if (!(val & NX_MMIO_BAR_ENABLE)) {
-		prlog(PR_ERR, "   AT BAR disabled!\n");
-		return;
-	}
-
-	at_bar[0] = GETFIELD(NX_MMIO_BAR_BASE, val) << 12;
-	at_bar[1] = get_bar_size(val);
-	prlog(PR_INFO, "   AT BAR:      %016llx (%lldKB)\n",
-	      at_bar[0], at_bar[1] / 0x400);
-
 	/* Create PCI root device node */
-	np = dt_new_addr(dt_root, "pciex", at_bar[0]);
+	np = dt_new_addr(dt_root, "pciex", 0);
 	if (!np) {
 		prlog(PR_ERR, "%s: Cannot create PHB device node\n",
 		      __func__);
@@ -1072,12 +765,11 @@ static void npu_probe_phb(struct dt_node *dn)
 	}
 
 	dt_add_property_strings(np, "compatible",
-				"ibm,power8-npu-pciex", "ibm,ioda2-npu-phb");
+				"ibm,power9-npu-pciex", "ibm,ioda2-npu-phb");
 	dt_add_property_strings(np, "device_type", "pciex");
-	dt_add_property(np, "reg", at_bar, sizeof(at_bar));
+	dt_add_property(np, "reg", 0, 4);
 
-	dt_add_property_cells(np, "ibm,phb-index", phb_index);
-	dt_add_property_cells(np, "ibm,npu-index", index);
+	dt_add_property_cells(np, "ibm,phb-index", index);
 	dt_add_property_cells(np, "ibm,chip-id", gcid);
 	dt_add_property_cells(np, "ibm,xscom-base", xscom);
 	dt_add_property_cells(np, "ibm,npcq", dn->phandle);
@@ -1320,14 +1012,6 @@ static void npu_create_devices(struct dt_node *dn, struct npu *p)
 	struct npu_dev *dev;
 	struct dt_node *npu_dn, *link;
 	uint32_t npu_phandle, index = 0;
-	uint64_t buid;
-	uint64_t lsisrcid;
-
-	lsisrcid = GETFIELD(NPU_LSI_SRC_ID_BASE,
-			    in_be64(p->at_regs + NPU_LSI_SOURCE_ID));
-	buid = SETFIELD(NP_BUID_BASE, 0ull,
-			(p8_chip_irq_block_base(p->chip_id, P8_IRQ_BLOCK_MISC) | lsisrcid));
-	buid |= NP_BUID_ENABLE;
 
 	/* Get the npu node which has the links which we expand here
 	 * into pci like devices attached to our emulated phb. */
@@ -1365,25 +1049,26 @@ static void npu_create_devices(struct dt_node *dn, struct npu *p)
 		dev->pl_xscom_base = dt_prop_get_u64(link, "ibm,npu-phy");
 		dev->lane_mask = dt_prop_get_u32(link, "ibm,npu-lane-mask");
 
-		/* Setup BUID/ISRN */
-		xscom_write(p->chip_id, dev->xscom + NX_NP_BUID, buid);
-
 		bar = &dev->bar;
 		bar->flags = (PCI_CFG_BAR_TYPE_MEM |
 			      PCI_CFG_BAR_MEM64);
 
 		/* Update BAR info */
-		bar->xscom = dev->xscom + NX_MMIO_BAR_0;
+		bar->xscom = dev->xscom + NPU_STCK_NDT_BAR;
 		xscom_read(p->chip_id, bar->xscom, &val);
-		bar->base  = GETFIELD(NX_MMIO_BAR_BASE, val) << 12;
-		bar->size = get_bar_size(val);
+
+		if (dev->index % 2)
+			bar->base = GETFIELD(NPU_STCK_NDT_BAR1_BASE, val) << 17;
+		else
+			bar->base = GETFIELD(NPU_STCK_NDT_BAR1_BASE, val) << 17;
+		bar->size = NX_MMIO_DL_SIZE;
 
 		/*
 		 * The config space is initialised with the BARs
 		 * disabled, so make sure it is actually disabled in
 		 * hardware.
 		 */
-		npu_dev_bar_update(p->chip_id, bar, false);
+		npu_dev_bar_update(p->chip_id, bar, dev->index, false);
 
 		/* Initialize config space */
 		npu_dev_create_cfg(dev);
@@ -1396,13 +1081,7 @@ static void npu_add_phb_properties(struct npu *p)
 {
 	struct dt_node *np = p->phb.dt_node;
 	uint32_t icsp = get_ics_phandle();
-	uint64_t tkill, mm_base, mm_size;
-	uint32_t base_lsi = p->base_lsi;
-	uint32_t map[] = { 0x0, 0x0, 0x0, 0x1, icsp, base_lsi,
-			   0x0, 0x0, 0x0, 0x2, icsp, base_lsi + 1,
-			   0x800, 0x0, 0x0, 0x1, icsp, base_lsi + 2,
-			   0x800, 0x0, 0x0, 0x2, icsp, base_lsi + 3 };
-	uint32_t mask[] = {0xf800, 0x0, 0x0, 0x7};
+	uint64_t mm_base, mm_size;
 
 	/* Add various properties that HB doesn't have to
 	 * add, some of them simply because they result from
@@ -1417,39 +1096,15 @@ static void npu_add_phb_properties(struct npu *p)
 	dt_add_property_cells(np, "clock-frequency", 0x200, 0);
         dt_add_property_cells(np, "interrupt-parent", icsp);
 
-        /* DLPL Interrupts */
-	p->phb.lstate.int_size = 2;
-	p->phb.lstate.int_val[0][0] = p->base_lsi + NPU_LSI_INT_DL0;
-	p->phb.lstate.int_val[0][1] = 1;
-	p->phb.lstate.int_val[1][0] = p->base_lsi + NPU_LSI_INT_DL1;
-	p->phb.lstate.int_val[1][1] = 1;
-	p->phb.lstate.int_val[2][0] = p->base_lsi + NPU_LSI_INT_DL2;
-	p->phb.lstate.int_val[2][1] = 1;
-	p->phb.lstate.int_val[3][0] = p->base_lsi + NPU_LSI_INT_DL3;
-	p->phb.lstate.int_val[3][1] = 1;
-	p->phb.lstate.int_parent[0] = icsp;
-	p->phb.lstate.int_parent[1] = icsp;
-	p->phb.lstate.int_parent[2] = icsp;
-	p->phb.lstate.int_parent[3] = icsp;
-
-	/* Due to the way the emulated PCI devices are structured in
-	 * the device tree the core PCI layer doesn't do this for
-	 * us. Besides the swizzling wouldn't suit our needs even if it
-	 * did. */
-	dt_add_property(np, "interrupt-map", map, sizeof(map));
-	dt_add_property(np, "interrupt-map-mask", mask, sizeof(mask));
-
 	/* NPU PHB properties */
-	/* TODO: Due to an errata TCE KILL only works when DMA traffic
-	 * has been stopped. We need to implement the work around
-	 * which is to do a TCE kill all instead. */
-	tkill = cleanup_addr((uint64_t)p->at_regs) + NPU_TCE_KILL;
 	dt_add_property_cells(np, "ibm,opal-num-pes",
 			      NPU_NUM_OF_PES);
 	dt_add_property_cells(np, "ibm,opal-reserved-pe",
 			      NPU_NUM_OF_PES);
-        dt_add_property_cells(np, "ibm,opal-tce-kill",
-			      hi32(tkill), lo32(tkill));
+	/* TODO */
+	//tkill = cleanup_addr((uint64_t)p->at_regs) + NPU_TCE_KILL;
+        //dt_add_property_cells(np, "ibm,opal-tce-kill",
+	//		      hi32(tkill), lo32(tkill));
 
 	/* Memory window is exposed as 32-bits non-prefetchable
 	 * one because 64-bits prefetchable one is kind of special
@@ -1477,17 +1132,10 @@ static void npu_create_phb(struct dt_node *dn)
 
 	/* Populate PHB */
 	p = pmem;
-	p->index = dt_prop_get_u32(dn, "ibm,npu-index");
+	p->index = dt_prop_get_u32(dn, "ibm,phb-index");
 	p->chip_id = dt_prop_get_u32(dn, "ibm,chip-id");
 	p->xscom_base = dt_prop_get_u32(dn, "ibm,xscom-base");
 	p->total_devices = links;
-
-	/* TODO: When hardware fences are implemented, detect them here */
-	p->fenced = false;
-
-	/* This is the AT base */
-	p->at_xscom = p->xscom_base + NPU_AT_SCOM_OFFSET;
-	p->at_regs = (void *)dt_get_address(dn, 0, NULL);
 
 	prop = dt_require_property(dn, "ibm,mmio-window", -1);
 	assert(prop->len >= (2 * sizeof(uint64_t)));
@@ -1495,10 +1143,6 @@ static void npu_create_phb(struct dt_node *dn)
 	p->mm_size = ((const uint64_t *)prop->prop)[1];
 
 	p->devices = pmem + sizeof(struct npu);
-
-	/* Interrupt */
-        p->base_lsi = p8_chip_irq_block_base(p->chip_id, P8_IRQ_BLOCK_MISC) +
-		NPU_LSI_IRQ_MIN;
 
 	/* Generic PHB */
 	p->phb.dt_node = dn;
@@ -1517,22 +1161,19 @@ static void npu_create_phb(struct dt_node *dn)
 	/* Initialize IODA cache */
 	npu_ioda_init(p);
 
-	/* Register interrupt source */
-	npu_register_irq(p);
-
 	/* Initialize hardware */
 	npu_hw_init(p);
 }
 
-void probe_npu(void)
+void probe_npu2(void)
 {
 	struct dt_node *np;
 
 	/* Scan NPU XSCOM nodes */
-	dt_for_each_compatible(dt_root, np, "ibm,power8-npu")
+	dt_for_each_compatible(dt_root, np, "ibm,power9-npu")
 		npu_probe_phb(np);
 
 	/* Scan newly created PHB nodes */
-	dt_for_each_compatible(dt_root, np, "ibm,power8-npu-pciex")
+	dt_for_each_compatible(dt_root, np, "ibm,power9-npu-pciex")
 		npu_create_phb(np);
 }

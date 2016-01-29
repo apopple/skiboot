@@ -141,15 +141,6 @@ static inline struct npu *phb_to_npu(struct phb *phb)
 	return container_of(phb, struct npu, phb);
 }
 
-static inline void npu_ioda_sel(struct npu *p, uint32_t table,
-				    uint32_t addr, bool autoinc)
-{
-	out_be64(p->at_regs + NPU_IODA_ADDR,
-		 (autoinc ? NPU_IODA_AD_AUTOINC : 0)	|
-		 SETFIELD(NPU_IODA_AD_TSEL, 0ul, table)	|
-		 SETFIELD(NPU_IODA_AD_TADR, 0ul, addr));
-}
-
 void npu_scom_init(struct npu_dev *dev);
 
 int64_t npu_dev_procedure_read(struct config_space *cfg,
