@@ -103,6 +103,10 @@ void add_chip_dev_associativity(struct dt_node *dev)
 	hw_cid = dt_prop_get_u32_def(chip->devnode, "ibm,hw-card-id", 0);
 	hw_mid = dt_prop_get_u32_def(chip->devnode, "ibm,hw-module-id", 0);
 
+	/* simics may have provided this */
+	if (dt_find_property(dev, "ibm,associativity"))
+		return;
+
 	dt_add_property_cells(dev, "ibm,associativity", 4,
 			      get_chip_node_id(chip),
 			      hw_cid, hw_mid, chip_id);

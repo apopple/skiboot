@@ -156,9 +156,11 @@ static uint32_t reset_npu_dl(struct npu_dev *npu_dev)
 	xscom_write(npu_dev->npu->chip_id, npu_dev->xscom + NX_TL_RSP_D_CR, PPC_BIT(15));
 
 	/* Reset error registers.  TODO: are there more we should clear here? */
-	npu_ioda_sel(npu_dev->npu, NPU_IODA_TBL_PESTB, 0, true);
-	for (val = 0; val < NPU_NUM_OF_PES; val++)
-		out_be64(npu_dev->npu->at_regs + NPU_IODA_DATA0, 0);
+
+	/* TODO: Need a generic call back for NPU1 & NPU2 */
+//	npu_ioda_sel(npu_dev->npu, NPU_IODA_TBL_PESTB, 0, true);
+//	for (val = 0; val < NPU_NUM_OF_PES; val++)
+//		out_be64(npu_dev->npu->at_regs + NPU_IODA_DATA0, 0);
 
 	return PROCEDURE_COMPLETE;
 }
