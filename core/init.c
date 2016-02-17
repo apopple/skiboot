@@ -482,10 +482,64 @@ void __noreturn load_and_boot_kernel(bool is_reboot)
 	start_kernel(kernel_entry, fdt, mem_top);
 }
 
+/* TODO: move these somewhere else */
+/* returns the maximum positive value of a signed integer with n bits */
+#define SIGNED_MAX(n) ((1ull << (n - 1)) - 1)
+#define SPRN_DEC  0x016
+#define SPRN_LPCR 0x13E
+#define LPCR_LD 0x00020000
+
+static void set_ld(int to)
+{
+	u64 lpcr = mfspr(SPRN_LPCR);
+
+	if (to)
+		lpcr |=  LPCR_LD;
+	else
+		lpcr &= ~LPCR_LD;
+
+	mtspr(SPRN_LPCR, lpcr);
+}
+
+/*
+ * The DEC register width in large decrementer mode isn't specified and can be
+ * up to 64 bits. In LD mode reads are sign extended to 64 bits and when writing
+ * extraneous high bits are ignored.
+ *
+ * We can use these features to autodetect the DEC register width. Starting with
+ * an all 1s value we can successively clear the highest bit, write to the DEC
+ * and read back until we get a value with the upper bits cleared.
+ */
+
+static int find_dec_bits(void)
+{
+	int bits = 64;
+
+	/* LD mode is a P9 feature */
+	if (proc_gen < proc_gen_p9)
+		return 32;
+
+	set_ld(1);
+
+	/* When reading from the DEC we set the low 32 bits to stop the
+	 * decrementer's down counting introducing unwanted zero bits.
+	 */
+        do {
+                mtspr(SPRN_DEC, SIGNED_MAX(bits--));
+        } while ((mfspr(SPRN_DEC) | SIGNED_MAX(32)) == ~(0ull));
+
+	/* switch LD off so we don't suprise anyone */
+	set_ld(0);
+
+	return bits + 1;
+}
+
 static void dt_fixups(void)
 {
 	struct dt_node *n;
+	struct dt_node *cpus;
 	struct dt_node *primary_lpc = NULL;
+	int dec_bits = 32;
 
 	/* lpc node missing #address/size cells. Also pick one as
 	 * primary for now (TBD: How to convey that from HB)
@@ -508,6 +562,19 @@ static void dt_fixups(void)
 	dt_for_each_compatible(dt_root, n, "ibm,xscom") {
 		if (!dt_has_node_property(n, "scom-controller", NULL))
 			dt_add_property(n, "scom-controller", NULL, 0);
+	}
+
+	/* Add ibm,dec-bits for each CPU */
+	dec_bits = find_dec_bits();
+	prlog(PR_DEBUG, "CPU: Decrementer width: %d bits\n", dec_bits);
+
+	cpus = dt_find_by_path(dt_root, "/cpus");
+	dt_for_each_child(cpus, n) {
+		/* skip cache nodes */
+		if (strcmp(dt_prop_get(n, "device_type"), "cpu"))
+			continue;
+
+		dt_add_property(n, "ibm,dec-bits", &dec_bits, sizeof(dec_bits));
 	}
 }
 
