@@ -1,6 +1,13 @@
 # need to get images path defined early
 source $env(LIB_DIR)/ppc/util.tcl
 
+# If a procedure exists, run it.
+proc run p {
+    if { [expr {[llength [info procs $p]] > 0}] } {
+	$p
+    }
+}
+
 proc mconfig { name env_name def } {
     global mconf
     global env
@@ -86,6 +93,8 @@ if { $default_config == "PEGASUS" } {
 if { [info exists env(SKIBOOT_SIMCONF)] } {
     source $env(SKIBOOT_SIMCONF)
 }
+
+run sim_conf
 
 define machine myconf mysim
 
@@ -207,8 +216,12 @@ mysim memory fread $mconf(boot_load) $boot_size $mconf(boot_image)
 set payload_size [file size $mconf(payload)]
 mysim memory fread $mconf(payload_addr) $payload_size $mconf(payload)
 
+run sim_sim
+
 # Flatten it
 epapr::of2dtb mysim $mconf(epapr_dt_addr)
+
+run sim_run
 
 # Set run speed
 mysim mode fastest
