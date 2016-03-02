@@ -52,15 +52,34 @@
 #define NPU_MMIO_SIZE			(16*1024*1024)
 #define NPU_SM_SIZE			0x20
 
+#define P9_MMIO_ADDR			PPC_BITMASK(13, 14)
+
+/* links are grouped as pairs in a stack resulting in interleaved
+ * registers for each link. So we define each as a combination of
+ * offset and stride. */
+struct stck_reg {
+	uint32_t stride;
+	uint32_t offset;
+};
+static struct stck_reg CTL_BDF2PE_0_CONFIG = {0x3, 0x8a};
+
+#define CONFIG_BDF2PE_ENABLE		PPC_BIT(0)
+#define CONFIG_BDF2PE_PE		PPC_BITMASK(4, 7)
+#define CONFIG_BDF2PE_BDF		PPC_BITMASK(24, 63)
+
+#define NPU2_IODA_ADDR			0x700108
+#define NPU2_IODA_DATA0			0x700110
+
 /* Convenience macro to part functions still to be implemented for P9/NPU2 */
 #define TODO() prerror("%s: Not implemented for P9/NPU2\n", __FUNCTION__)
 
-static inline void npu_ioda_sel(struct npu __unused *p, uint32_t __unused table,
-				uint32_t __unused addr, bool __unused autoinc)
+static inline void npu_ioda_sel(struct npu *p, uint32_t table,
+				    uint32_t addr, bool autoinc)
 {
-	/* TODO: Update for NPU2 */
-
-	return;
+	out_be64(p->at_regs + NPU2_IODA_ADDR,
+		 (autoinc ? NPU_IODA_AD_AUTOINC : 0)	|
+		 SETFIELD(NPU_IODA_AD_TSEL, 0ul, table)	|
+		 SETFIELD(NPU_IODA_AD_TADR, 0ul, addr));
 }
 
 /* Returns the scom base address for the stack this link belongs to */
@@ -73,6 +92,41 @@ static uint64_t npu_link_scom_base(struct dt_node __unused *dn,
 
 	/* Each stack contains two links */
 	return base + (index >> 1) * stck_size;
+}
+
+/* Map SCOM offset to the equivalent MMIO offset from the stack base address. */
+#define scom_to_mmio_offset(x)			\
+	((((x) & 0xe0) << 11) + ((x) & 0x1f))
+
+/* Function to read a stack register from a struct npu_dev */
+static bool stack_use_mmio = true;
+static uint64_t npu_read(struct npu_dev *dev, struct stck_reg reg)
+{
+	uint64_t val;
+	uint64_t offset;
+	struct npu *npu = dev->npu;
+
+	offset = reg.offset + (dev->index % 2)*reg.stride;
+
+	if (stack_use_mmio)
+		val = in_be64(dev->mmio) + scom_to_mmio_offset(offset);
+	else
+		xscom_read(npu->chip_id, dev->xscom + offset, &val);
+
+	return val;
+}
+
+static void npu_write(struct npu_dev *dev, struct stck_reg reg, uint64_t val)
+{
+	uint64_t offset;
+	struct npu *npu = dev->npu;
+
+	offset = reg.offset + (dev->index % 2)*reg.stride;
+
+	if (stack_use_mmio)
+		out_be64(dev->mmio + scom_to_mmio_offset(offset), val);
+	else
+		xscom_write(npu->chip_id, dev->xscom + offset, val);
 }
 
 static void npu_lock(struct phb *phb)
@@ -431,7 +485,7 @@ static int64_t npu_map_pe_dma_window_real(struct phb *phb,
 	}
 
 	npu_ioda_sel(p, NPU_IODA_TBL_TVT, window_id, false);
-	TODO();		//out_be64(p->at_regs + NPU_IODA_DATA0, tve);
+	out_be64(p->at_regs + NPU2_IODA_DATA0, tve);
 	p->tve_cache[window_id] = tve;
 
 	return OPAL_SUCCESS;
@@ -459,7 +513,7 @@ static int64_t npu_map_pe_dma_window(struct phb *phb,
 	 */
 	if (!tce_table_size) {
 		npu_ioda_sel(p, NPU_IODA_TBL_TVT, window_id, false);
-		TODO();		//out_be64(p->at_regs + NPU_IODA_DATA0, 0ul);
+		out_be64(p->at_regs + NPU2_IODA_DATA0, 0ul);
 		p->tve_cache[window_id] = 0ul;
 		return OPAL_SUCCESS;
 	}
@@ -499,7 +553,7 @@ static int64_t npu_map_pe_dma_window(struct phb *phb,
 
 	/* Update to hardware */
 	npu_ioda_sel(p, NPU_IODA_TBL_TVT, window_id, false);
-	TODO();		//out_be64(p->at_regs + NPU_IODA_DATA0, data64);
+	out_be64(p->at_regs + NPU2_IODA_DATA0, data64);
 	p->tve_cache[window_id] = data64;
 
 	return OPAL_SUCCESS;
@@ -515,6 +569,8 @@ static int64_t npu_set_pe(struct phb *phb,
 {
 	struct npu *p = phb_to_npu(phb);
 	struct npu_dev *dev;
+	uint64_t val;
+	int i;
 
 	/* Sanity check */
 	if (action != OPAL_MAP_PE &&
@@ -536,8 +592,45 @@ static int64_t npu_set_pe(struct phb *phb,
 	    fcompare != OPAL_COMPARE_RID_FUNCTION_NUMBER)
 		return OPAL_UNSUPPORTED;
 
-	/* Map the link to the corresponding PE */
-	/* XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX */
+	/* Map the link to the corresponding PE.
+	 *
+	 * The bdfn to map to PE# is the bdfn of the associated PCI
+	 * device which should be initialised at dt fixup time. Need
+	 * to do the following:
+	 *
+	 * 1) Find the real bdfn by searching npu devices on this phb
+	 * 2) Find any existing real bdfn->PE mappings (this function
+	 * will be called for each link so may be called multiple
+	 * times with different bdfn's mapping to the same real bdfn).
+	 * 3) Check that any existing real bdfn's map to the same PE.
+	 * 4) Setup a new mapping if one doesn't exist.
+	 */
+
+	/* We only care about the real bdfn */
+	bdfn = dev->real_bdfn;
+
+	/* For the moment we assume each link supports a single BDF so
+	 * we only check the first BDF-to-PE map of each link. If we
+	 * ever support more than one BDF per link this will need
+	 * updating.*/
+	for (i = 0; i < p->total_devices; i++) {
+		val = npu_read(&p->devices[i], CTL_BDF2PE_0_CONFIG);
+		if (GETFIELD(CONFIG_BDF2PE_ENABLE, val) &&
+		    GETFIELD(CONFIG_BDF2PE_BDF, val) == bdfn &&
+		    GETFIELD(CONFIG_BDF2PE_PE, val) != pe_num) {
+			NPUDEVERR(dev,
+				  "bdfn 0x%04llx already allocated to a different PE\n",
+				  bdfn);
+			return OPAL_PARAMETER;
+		}
+	}
+
+	/* Setup the mapping. It shouldn't matter if it already
+	 * exists .*/
+	val = SETFIELD(CONFIG_BDF2PE_ENABLE, 0UL, 1UL);
+	val = SETFIELD(CONFIG_BDF2PE_BDF, val, bdfn);
+	val = SETFIELD(CONFIG_BDF2PE_PE, val, pe_num);
+	npu_write(dev, CTL_BDF2PE_0_CONFIG, val);
 
 	return OPAL_SUCCESS;
 }
@@ -712,19 +805,21 @@ static void assign_mmio_bars(uint32_t gcid, uint32_t xscom,
 	bar.xscom = npu_link_scom_base(npu_dn, xscom, 5) + NPU_STCK_MAX_PHY_BAR;
 	bar.size = NPU_MMIO_SIZE;
 	bar.base = 0x6030200000000;
-	npu_dev_bar_update(gcid, &bar, 1, true);
+	npu_dev_bar_update(gcid, &bar, 0, true);
+
+	/* TODO: Remove, only for debug */
 	prlog(PR_INFO, "NPU Version: 0x%016llx\n", in_be64((uint64_t *) (bar.base + 0x720080)));
 
 	/* And finally map the two PHY bars which are in stack 0 and 1 */
 	bar.xscom = npu_link_scom_base(npu_dn, xscom, 0) + NPU_STCK_MAX_PHY_BAR;
 	bar.size = NX_MMIO_PL_SIZE;
 	bar.base = 0x6030201200000;
-	npu_dev_bar_update(gcid, &bar, 1, true);
+	npu_dev_bar_update(gcid, &bar, 0, true);
 
 	bar.xscom = npu_link_scom_base(npu_dn, xscom, 2) + NPU_STCK_MAX_PHY_BAR;
 	bar.size = NX_MMIO_PL_SIZE;
 	bar.base = 0x6030201400000;
-	npu_dev_bar_update(gcid, &bar, 1, true);
+	npu_dev_bar_update(gcid, &bar, 0, true);
 }
 
 /* Probe NPU device node and create PCI root device node
@@ -735,7 +830,7 @@ static void npu_probe_phb(struct dt_node *dn)
 {
 	struct dt_node *np;
 	uint32_t gcid, index, xscom;
-	uint64_t mm_win[2];
+	uint64_t at_bar[2], mm_win[2], val;
 	uint32_t links = 0;
 	char *path;
 
@@ -756,8 +851,20 @@ static void npu_probe_phb(struct dt_node *dn)
 
 	assign_mmio_bars(gcid, xscom, dn, mm_win);
 
+	/* Retrieve NPU BAR */
+	xscom_read(gcid, npu_link_scom_base(dn, xscom, 5) + NPU_STCK_MAX_PHY_BAR,
+		   &val);
+	if (!GETFIELD(NPU_STCK_NDT_BAR0_ENABLE, val)) {
+		prlog(PR_ERR, "   NPU Global MMIO BAR disabled!\n");
+		return;
+	}
+	at_bar[0] = GETFIELD(NPU_STCK_NDT_BAR0_BASE, val) << 17 | P9_MMIO_ADDR;
+	at_bar[1] = NPU_MMIO_SIZE;
+	prlog(PR_INFO, "   NPU Global BAR:      %016llx (%lldKB)\n",
+	      at_bar[0], at_bar[1] / 0x400);
+
 	/* Create PCI root device node */
-	np = dt_new_addr(dt_root, "pciex", 0);
+	np = dt_new_addr(dt_root, "pciex", at_bar[0]);
 	if (!np) {
 		prlog(PR_ERR, "%s: Cannot create PHB device node\n",
 		      __func__);
@@ -767,7 +874,7 @@ static void npu_probe_phb(struct dt_node *dn)
 	dt_add_property_strings(np, "compatible",
 				"ibm,power9-npu-pciex", "ibm,ioda2-npu-phb");
 	dt_add_property_strings(np, "device_type", "pciex");
-	dt_add_property(np, "reg", 0, 4);
+	dt_add_property(np, "reg", at_bar, sizeof(at_bar));
 
 	dt_add_property_cells(np, "ibm,phb-index", index);
 	dt_add_property_cells(np, "ibm,chip-id", gcid);
@@ -1031,7 +1138,7 @@ static void npu_create_devices(struct dt_node *dn, struct npu *p)
 		dev->index = dt_prop_get_u32(link, "ibm,npu-link-index");
 		dev->xscom = npu_link_scom_base(npu_dn, p->xscom_base,
 						dev->index);
-
+		dev->mmio = p->at_regs + 0x400000 + 0x100000 * (dev->index >> 1);
 		dev->npu = p;
 		dev->dt_node = link;
 
@@ -1136,6 +1243,8 @@ static void npu_create_phb(struct dt_node *dn)
 	p->chip_id = dt_prop_get_u32(dn, "ibm,chip-id");
 	p->xscom_base = dt_prop_get_u32(dn, "ibm,xscom-base");
 	p->total_devices = links;
+
+	p->at_regs = (void *)dt_get_address(dn, 0, NULL);
 
 	prop = dt_require_property(dn, "ibm,mmio-window", -1);
 	assert(prop->len >= (2 * sizeof(uint64_t)));

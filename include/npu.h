@@ -75,7 +75,8 @@ struct npu_dev {
 	struct phb		*phb;
 
 	/* Device and function numbers are allocated based on GPU
-	 * association */
+	 * association. Links to connected to the same GPU will be
+	 * exposed as different functions of the same bus/device. */
 	uint32_t		bdfn;
 
 	/* The link@x node */
@@ -109,6 +110,16 @@ struct npu_dev {
 	uint32_t		procedure_status;
 
 	uint8_t			pe_num;
+
+	/* NPU2 additions below */
+
+	/* The bdfn of the real PCI device this link is associated
+	 * with. On Nvlink2 the bdfn of the PCI device is used to map
+	 * PE#. */
+	uint32_t		real_bdfn;
+
+	/* MMIO equivalent of xscom */
+	uint64_t		*mmio;
 };
 
 /* NPU PHB descriptor */
