@@ -167,9 +167,12 @@
 
 /* Device tree flags */
 
-/* Flags set in power-mgmt nodes in device tree if
- * respective idle states are supported in the platform.
+/*
+ * Flags set in power-mgmt nodes in device tree describing
+ * idle states that are supported in the platform.
  */
+#define OPAL_PM_TIMEBASE_STOP		0x00000002
+#define OPAL_PM_LOSE_FULL_CONTEXT	0x00004000
 #define OPAL_PM_NAP_ENABLED		0x00010000
 #define OPAL_PM_SLEEP_ENABLED		0x00020000
 #define OPAL_PM_WINKLE_ENABLED		0x00040000

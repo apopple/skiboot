@@ -407,12 +407,9 @@ struct cpu_idle_states {
 /* Set bits to avoid misinterpretation even if kernel has endian bugs */
 
 #define IDLE_DEC_STOP		0x00000001 /* Decrementer would stop */
-#define IDLE_TB_STOP		0x00000002 /* Timebase would stop */
 #define IDLE_LOSE_USER_CONTEXT	0x00001000 /* Restore GPRs like nap */
 #define IDLE_LOSE_HYP_CONTEXT	0x00002000 /* Restore hypervisor resource
 					      from PACA pointer */
-#define IDLE_LOSE_FULL_CONTEXT	0x00004000 /* Restore hypervisor resource
-					      by searching PACA */
 #define IDLE_USE_PMICR		0x00800000 /* Use SPR PMICR instruction */
 
 #define IDLE_FASTSLEEP_PMICR	0x0000002000000000UL
@@ -429,10 +426,10 @@ static struct cpu_idle_states power7_cpu_idle_states[] = {
 		.latency_ns = 4000,
 		.residency_ns = 100000,
 		.flags = 0*IDLE_DEC_STOP \
-		       | 0*IDLE_TB_STOP  \
+		       | 0*OPAL_PM_TIMEBASE_STOP  \
 		       | 1*IDLE_LOSE_USER_CONTEXT \
 		       | 0*IDLE_LOSE_HYP_CONTEXT \
-		       | 0*IDLE_LOSE_FULL_CONTEXT \
+		       | 0*OPAL_PM_LOSE_FULL_CONTEXT \
 		       | 1*OPAL_PM_NAP_ENABLED \
 		       | 0*OPAL_PM_SLEEP_ENABLED \
 		       | 0*OPAL_PM_WINKLE_ENABLED \
@@ -447,10 +444,10 @@ static struct cpu_idle_states power8_cpu_idle_states[] = {
 		.latency_ns = 4000,
 		.residency_ns = 100000,
 		.flags = 0*IDLE_DEC_STOP \
-		       | 0*IDLE_TB_STOP  \
+		       | 0*OPAL_PM_TIMEBASE_STOP  \
 		       | 1*IDLE_LOSE_USER_CONTEXT \
 		       | 0*IDLE_LOSE_HYP_CONTEXT \
-		       | 0*IDLE_LOSE_FULL_CONTEXT \
+		       | 0*OPAL_PM_LOSE_FULL_CONTEXT \
 		       | 1*OPAL_PM_NAP_ENABLED \
 		       | 0*IDLE_USE_PMICR,
 		.pm_ctrl_reg_val = 0,
@@ -460,10 +457,10 @@ static struct cpu_idle_states power8_cpu_idle_states[] = {
 		.latency_ns = 40000,
 		.residency_ns = 300000000,
 		.flags = 1*IDLE_DEC_STOP \
-		       | 1*IDLE_TB_STOP  \
+		       | 1*OPAL_PM_TIMEBASE_STOP  \
 		       | 1*IDLE_LOSE_USER_CONTEXT \
 		       | 0*IDLE_LOSE_HYP_CONTEXT \
-		       | 0*IDLE_LOSE_FULL_CONTEXT \
+		       | 0*OPAL_PM_LOSE_FULL_CONTEXT \
 		       | 1*OPAL_PM_SLEEP_ENABLED_ER1 \
 		       | 0*IDLE_USE_PMICR, /* Not enabled until deep
 						states are available */
@@ -480,10 +477,10 @@ static struct cpu_idle_states power8_cpu_idle_states[] = {
 					     * accurate for when linux does
 					     * use it. */
 		.flags = 1*IDLE_DEC_STOP \
-		       | 1*IDLE_TB_STOP  \
+		       | 1*OPAL_PM_TIMEBASE_STOP  \
 		       | 1*IDLE_LOSE_USER_CONTEXT \
 		       | 1*IDLE_LOSE_HYP_CONTEXT \
-		       | 1*IDLE_LOSE_FULL_CONTEXT \
+		       | 1*OPAL_PM_LOSE_FULL_CONTEXT \
 		       | 1*OPAL_PM_WINKLE_ENABLED \
 		       | 0*IDLE_USE_PMICR, /* Currently choosing deep vs
 						fast via EX_PM_GP1 reg */
@@ -497,10 +494,10 @@ static struct cpu_idle_states power9_cpu_idle_states[] = {
 		.latency_ns = 300,
 		.residency_ns = 3000,
 		.flags = 0*IDLE_DEC_STOP \
-		       | 0*IDLE_TB_STOP  \
+		       | 0*OPAL_PM_TIMEBASE_STOP  \
 		       | 0*IDLE_LOSE_USER_CONTEXT \
 		       | 0*IDLE_LOSE_HYP_CONTEXT \
-		       | 0*IDLE_LOSE_FULL_CONTEXT \
+		       | 0*OPAL_PM_LOSE_FULL_CONTEXT \
 		       | 1*OPAL_PM_STOP_INST_FAST,
 		.pm_ctrl_reg_val = 0,
 		.pm_ctrl_reg_mask = 0xF },
@@ -509,10 +506,10 @@ static struct cpu_idle_states power9_cpu_idle_states[] = {
 		.latency_ns = 5000,
 		.residency_ns = 50000,
 		.flags = 0*IDLE_DEC_STOP \
-		       | 0*IDLE_TB_STOP  \
+		       | 0*OPAL_PM_TIMEBASE_STOP  \
 		       | 1*IDLE_LOSE_USER_CONTEXT \
 		       | 0*IDLE_LOSE_HYP_CONTEXT \
-		       | 0*IDLE_LOSE_FULL_CONTEXT \
+		       | 0*OPAL_PM_LOSE_FULL_CONTEXT \
 		       | 1*OPAL_PM_STOP_INST_FAST,
 		.pm_ctrl_reg_val = 1,
 		.pm_ctrl_reg_mask = 0xF },
@@ -521,10 +518,10 @@ static struct cpu_idle_states power9_cpu_idle_states[] = {
 		.latency_ns = 10000,
 		.residency_ns = 100000,
 		.flags = 0*IDLE_DEC_STOP \
-		       | 0*IDLE_TB_STOP  \
+		       | 0*OPAL_PM_TIMEBASE_STOP  \
 		       | 1*IDLE_LOSE_USER_CONTEXT \
 		       | 0*IDLE_LOSE_HYP_CONTEXT \
-		       | 0*IDLE_LOSE_FULL_CONTEXT \
+		       | 0*OPAL_PM_LOSE_FULL_CONTEXT \
 		       | 1*OPAL_PM_STOP_INST_FAST,
 		.pm_ctrl_reg_val = 2,
 		.pm_ctrl_reg_mask = 0xF },
@@ -534,10 +531,10 @@ static struct cpu_idle_states power9_cpu_idle_states[] = {
 		.latency_ns = 100000,
 		.residency_ns = 1000000,
 		.flags = 1*IDLE_DEC_STOP \
-		       | 1*IDLE_TB_STOP  \
+		       | 1*OPAL_PM_TIMEBASE_STOP  \
 		       | 1*IDLE_LOSE_USER_CONTEXT \
 		       | 1*IDLE_LOSE_HYP_CONTEXT \
-		       | 1*IDLE_LOSE_FULL_CONTEXT \
+		       | 1*OPAL_PM_LOSE_FULL_CONTEXT \
 		       | 1*OPAL_PM_STOP_INST_DEEP,
 		.pm_ctrl_reg_val = 4,
 		.pm_ctrl_reg_mask = 0xF },
@@ -547,10 +544,10 @@ static struct cpu_idle_states power9_cpu_idle_states[] = {
 		.latency_ns = 2000000,
 		.residency_ns = 20000000,
 		.flags = 1*IDLE_DEC_STOP \
-		       | 1*IDLE_TB_STOP  \
+		       | 1*OPAL_PM_TIMEBASE_STOP  \
 		       | 1*IDLE_LOSE_USER_CONTEXT \
 		       | 1*IDLE_LOSE_HYP_CONTEXT \
-		       | 1*IDLE_LOSE_FULL_CONTEXT \
+		       | 1*OPAL_PM_LOSE_FULL_CONTEXT \
 		       | 1*OPAL_PM_STOP_INST_DEEP,
 		.pm_ctrl_reg_val = 0x8,
 		.pm_ctrl_reg_mask = 0xF },
@@ -561,10 +558,10 @@ static struct cpu_idle_states power9_cpu_idle_states[] = {
 		.latency_ns = 10000000,
 		.residency_ns = 100000000,
 		.flags = 1*IDLE_DEC_STOP \
-		       | 1*IDLE_TB_STOP  \
+		       | 1*OPAL_PM_TIMEBASE_STOP  \
 		       | 1*IDLE_LOSE_USER_CONTEXT \
 		       | 1*IDLE_LOSE_HYP_CONTEXT \
-		       | 1*IDLE_LOSE_FULL_CONTEXT \
+		       | 1*OPAL_PM_LOSE_FULL_CONTEXT \
 		       | 1*OPAL_PM_STOP_INST_DEEP,
 		.pm_ctrl_reg_val = 0xB,
 		.pm_ctrl_reg_mask = 0xF },
