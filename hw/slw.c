@@ -500,6 +500,8 @@ void add_cpu_idle_state_properties(void)
 	bool can_sleep = true, can_winkle = true;
 	u8 i;
 
+	u32 supported_states_mask;
+
 	/* Buffers to hold idle state properties */
 	char *name_buf, *alloced_name_buf;
 	u32 *latency_ns_buf;
@@ -583,12 +585,21 @@ void add_cpu_idle_state_properties(void)
 	name_buf_len = 0;
 	num_supported_idle_states = 0;
 
+	/*
+	 * Create a mask with the flags of all supported idle states
+	 * set. Use this to only add supported idle states to the
+	 * device-tree
+	 */
+	supported_states_mask = OPAL_PM_NAP_ENABLED;
+	if (can_sleep)
+		supported_states_mask |= OPAL_PM_SLEEP_ENABLED |
+					OPAL_PM_SLEEP_ENABLED_ER1;
+	if (can_winkle)
+		supported_states_mask |= OPAL_PM_WINKLE_ENABLED;
+
 	for (i = 0; i < nr_states; i++) {
 		/* For each state, check if it is one of the supported states. */
-		if( (states[i].flags & OPAL_PM_NAP_ENABLED) ||
-		   ((states[i].flags & OPAL_PM_SLEEP_ENABLED) && can_sleep) ||
-		   ((states[i].flags & OPAL_PM_SLEEP_ENABLED_ER1) && can_sleep) ||
-		   ((states[i].flags & OPAL_PM_WINKLE_ENABLED) && can_winkle) ) {
+		if (states[i].flags & supported_states_mask) {
 			/*
 			 * If a state is supported add each of its property
 			 * to its corresponding property buffer.
