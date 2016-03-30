@@ -1509,6 +1509,7 @@ static void npu_create_phb(struct dt_node *dn)
 	p->phb.dt_node = dn;
 	p->phb.ops = &npu_ops;
 	p->phb.phb_type = phb_type_pcie_v3;
+	init_lock(&p->phb.lock);
 
 	/* Populate devices */
 	npu_create_devices(dn, p);

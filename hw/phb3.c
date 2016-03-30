@@ -4354,6 +4354,7 @@ static void phb3_create(struct dt_node *np)
 	p->phb.scan_map = 0x1; /* Only device 0 to scan */
 	p->max_link_speed = dt_prop_get_u32_def(np, "ibm,max-link-speed", 3);
 	p->state = PHB3_STATE_UNINITIALIZED;
+	init_lock(&p->phb.lock);
 
 	if (!phb3_calculate_windows(p))
 		return;

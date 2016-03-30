@@ -2535,7 +2535,7 @@ static bool phb4_init_rc_cfg(struct phb4 *p)
 			     PCIECAP_AER_UE_POISON_TLP		|
 			     PCIECAP_AER_UE_COMPL_TIMEOUT	|
 			     PCIECAP_AER_UE_COMPL_ABORT);
- 
+
 	/* Clear all CE status */
 	phb4_pcicfg_write32(&p->phb, 0, aercap + PCIECAP_AER_CE_STATUS,
 			     0xffffffff);
@@ -3055,6 +3055,7 @@ static void phb4_create(struct dt_node *np)
 	p->phb.scan_map = 0x1; /* Only device 0 to scan */
 	p->max_link_speed = dt_prop_get_u32_def(np, "ibm,max-link-speed", 3);
 	p->state = PHB4_STATE_UNINITIALIZED;
+	init_lock(&p->phb.lock);
 
 	if (!phb4_calculate_windows(p))
 		return;
