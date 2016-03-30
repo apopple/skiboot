@@ -2665,6 +2665,8 @@ void p7ioc_phb_setup(struct p7ioc *ioc, uint8_t index)
 	p->state = P7IOC_PHB_STATE_UNINITIALIZED;
 	p->phb.scan_map = 0x1; /* Only device 0 to scan */
 	init_lock(&p->phb.lock);
+	list_head_init(&p->phb.devices);
+	list_head_init(&p->phb.virt_devices);
 
 	/* Find P7IOC base location code in IOC */
 	p->phb.base_loc_code = dt_prop_get_def(ioc->dt_node,
