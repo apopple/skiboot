@@ -17,9 +17,9 @@
 #include <io.h>
 #include <timebase.h>
 #include <pci.h>
+#include <pci-virt.h>
 #include <interrupts.h>
 #include <npu-regs.h>
-#include <npu-cfg.h>
 #include <npu.h>
 #include <xscom.h>
 
@@ -509,13 +509,13 @@ static uint32_t get_procedure_status(struct npu_dev *dev)
 	return dev->procedure_status;
 }
 
-int64_t npu_dev_procedure_read(struct config_space *cfg,
-			       struct config_space_trap *trap,
+int64_t npu_dev_procedure_read(struct pci_virt_device *pvd,
+			       struct pci_virt_cfg_trap *pvct,
 			       uint32_t offset,
 			       uint32_t size,
 			       uint32_t *data)
 {
-	struct npu_dev *dev = container_of(cfg, struct npu_dev, config_space);
+	struct npu_dev *dev = pvd->data;
 	int64_t rc = OPAL_SUCCESS;
 
 	if (size != 4) {
@@ -524,7 +524,7 @@ int64_t npu_dev_procedure_read(struct config_space *cfg,
 		return OPAL_PARAMETER;
 	}
 
-	offset -= trap->start;
+	offset -= pvct->start;
 	*data = 0;
 
 	switch (offset) {
@@ -550,13 +550,13 @@ int64_t npu_dev_procedure_read(struct config_space *cfg,
 	return rc;
 }
 
-int64_t npu_dev_procedure_write(struct config_space *cfg,
-				struct config_space_trap *trap,
+int64_t npu_dev_procedure_write(struct pci_virt_device *pvd,
+				struct pci_virt_cfg_trap *pvct,
 				uint32_t offset,
 				uint32_t size,
 				uint32_t data)
 {
-	struct npu_dev *dev = container_of(cfg, struct npu_dev, config_space);
+	struct npu_dev *dev = pvd->data;
 	const char *name;
 	int64_t rc = OPAL_SUCCESS;
 
@@ -566,7 +566,7 @@ int64_t npu_dev_procedure_write(struct config_space *cfg,
 		return OPAL_PARAMETER;
 	}
 
-	offset -= trap->start;
+	offset -= pvct->start;
 
 	switch (offset) {
 	case 0:

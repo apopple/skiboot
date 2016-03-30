@@ -18,6 +18,7 @@
 #define __NPU_H
 
 #include <io.h>
+#include <pci-virt.h>
 
 /* Number of PEs supported */
 #define NPU_NUM_OF_PES	4
@@ -74,21 +75,13 @@ struct npu_dev {
 	struct npu_dev_bar	bar;
 	struct phb		*phb;
 
-	/* Device and function numbers are allocated based on GPU
-	 * association. Links to connected to the same GPU will be
-	 * exposed as different functions of the same bus/device. */
-	uint32_t		bdfn;
-
 	/* The link@x node */
 	struct dt_node		*dt_node;
 
-	/* The GPU PCI device this NPU device is associated with */
+	/* PCI virtual device and the associated GPU device */
+	struct pci_virt_device *pvd;
 	struct pci_device	*pd;
-
 	struct npu		*npu;
-
-	/* The emulated configuration space for this device */
-	struct config_space	config_space;
 
 	/* Which PHY lanes this device is associated with */
 	uint16_t		lane_mask;
@@ -154,14 +147,13 @@ static inline struct npu *phb_to_npu(struct phb *phb)
 
 void npu_scom_init(struct npu_dev *dev);
 
-int64_t npu_dev_procedure_read(struct config_space *cfg,
-			       struct config_space_trap *trap,
+int64_t npu_dev_procedure_read(struct pci_virt_device *pvd,
+			       struct pci_virt_cfg_trap *pvct,
 			       uint32_t offset,
 			       uint32_t size,
 			       uint32_t *data);
-
-int64_t npu_dev_procedure_write(struct config_space *cfg,
-				struct config_space_trap *trap,
+int64_t npu_dev_procedure_write(struct pci_virt_device *pvd,
+				struct pci_virt_cfg_trap *pvct,
 				uint32_t offset,
 				uint32_t size,
 				uint32_t data);
