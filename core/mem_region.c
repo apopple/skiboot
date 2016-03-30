@@ -1103,7 +1103,7 @@ static void mem_region_add_dt_reserved_node(struct dt_node *parent,
 
 	region->node = dt_new_addr(parent, name, region->start);
 	assert(region->node);
-	dt_add_property_u64s(region->node, "reg", region->start, region->len);
+	dt_add_property_u64s(region->node, "range", region->start, region->len);
 	free(name);
 }
 

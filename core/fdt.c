@@ -160,7 +160,15 @@ static void create_dtb_reservemap(void *fdt, const struct dt_node *root)
 			size = *(ranges++);
 			save_err(fdt_add_reservemap_entry(fdt, base, size));
 		}
+
+		dt_del_property((struct dt_node *)root,
+				(struct dt_property *)prop);
 	}
+
+	prop = dt_find_property(root, "reserved-names");
+	if (prop)
+		dt_del_property((struct dt_node *)root,
+				(struct dt_property *)prop);
 
 	save_err(fdt_finish_reservemap(fdt));
 }
