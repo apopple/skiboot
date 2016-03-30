@@ -2946,6 +2946,8 @@ static void phb4_create(struct dt_node *np)
 	p->max_link_speed = dt_prop_get_u32_def(np, "ibm,max-link-speed", 3);
 	p->state = PHB4_STATE_UNINITIALIZED;
 	init_lock(&p->phb.lock);
+	list_head_init(&p->phb.devices);
+	list_head_init(&p->phb.virt_devices);
 
 	if (!phb4_calculate_windows(p))
 		return;
