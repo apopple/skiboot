@@ -344,7 +344,7 @@ static bool pci_enable_bridge(struct phb *phb, struct pci_device *pd)
 			PCIDBG(phb, pd->bdfn, "No card in slot\n");
 			return false;
 		}
-		
+
 		/* Read the slot capabilities */
 		pci_cfg_read16(phb, pd->bdfn, ecap+PCICAP_EXP_SLOTCAP, &slcap);
 		PCITRACE(phb, pd->bdfn, "slcap=%04x\n", slcap);
@@ -457,7 +457,7 @@ static void pci_cleanup_bridge(struct phb *phb, struct pci_device *pd)
 	pci_cfg_read16(phb, pd->bdfn, PCI_CFG_CMD, &cmd);
 	cmd |= PCI_CFG_CMD_IO_EN | PCI_CFG_CMD_MEM_EN;
 	cmd |= PCI_CFG_CMD_BUS_MASTER_EN;
-	pci_cfg_write16(phb, pd->bdfn, PCI_CFG_CMD, cmd);	
+	pci_cfg_write16(phb, pd->bdfn, PCI_CFG_CMD, cmd);
 }
 
 /* Remove all subordinate PCI devices leading from the indicated
