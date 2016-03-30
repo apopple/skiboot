@@ -775,7 +775,7 @@ static void assign_mmio_bars(uint32_t gcid, uint32_t xscom,
 	 */
 
 	mem_start = 0x6030201000000;
-	mem_end = 0x6030201100000;
+	mem_end   = 0x6030201100000;
 
 	/* Now we configure all the DLTL BARs. These are the ones
 	 * actually exposed to the kernel. */
@@ -805,11 +805,12 @@ static void assign_mmio_bars(uint32_t gcid, uint32_t xscom,
 	bar.xscom = npu_link_scom_base(npu_dn, xscom, 5) + NPU_STCK_MAX_PHY_BAR;
 	bar.size = NPU_MMIO_SIZE;
 	bar.base = 0x6030200000000;
-	npu_dev_bar_update(gcid, &bar, 0, true);
+	npu_dev_bar_update(gcid, &bar, 1, true);
 
 	/* TODO: Remove, only for debug */
+#if 0
 	prlog(PR_INFO, "NPU Version: 0x%016llx\n", in_be64((uint64_t *) (bar.base + 0x720080)));
-
+#endif
 	/* And finally map the two PHY bars which are in stack 0 and 1 */
 	bar.xscom = npu_link_scom_base(npu_dn, xscom, 0) + NPU_STCK_MAX_PHY_BAR;
 	bar.size = NX_MMIO_PL_SIZE;
