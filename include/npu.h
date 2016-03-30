@@ -18,6 +18,7 @@
 #define __NPU_H
 
 #include <io.h>
+#include <pci-virt.h>
 
 /* Number of PEs supported */
 #define NPU_NUM_OF_PES	4
@@ -81,13 +82,11 @@ struct npu_dev {
 	/* The link@x node */
 	struct dt_node		*dt_node;
 
-	/* The GPU PCI device this NPU device is associated with */
+	/* PCI virtual device and the associated GPU device */
+	struct pci_virt_device *pvd;
 	struct pci_device	*pd;
 
 	struct npu		*npu;
-
-	/* The emulated configuration space for this device */
-	struct config_space	config_space;
 
 	/* Which PHY lanes this device is associated with */
 	uint16_t		lane_mask;
@@ -155,14 +154,13 @@ static inline void npu_ioda_sel(struct npu *p, uint32_t table,
 
 void npu_scom_init(struct npu_dev *dev);
 
-int64_t npu_dev_procedure_read(struct config_space *cfg,
-			       struct config_space_trap *trap,
+int64_t npu_dev_procedure_read(struct pci_virt_device *pvd,
+			       struct pci_virt_cfg_trap *pvct,
 			       uint32_t offset,
 			       uint32_t size,
 			       uint32_t *data);
-
-int64_t npu_dev_procedure_write(struct config_space *cfg,
-				struct config_space_trap *trap,
+int64_t npu_dev_procedure_write(struct pci_virt_device *pvd,
+				struct pci_virt_cfg_trap *pvct,
 				uint32_t offset,
 				uint32_t size,
 				uint32_t data);
@@ -173,8 +171,11 @@ void npu_set_fence_state(struct npu *p, bool fence);
 				      (p)->phb.opal_id, ##a)
 #define NPUINF(p, fmt, a...)	prlog(PR_INFO,  "NPU%d: " fmt, \
 				      (p)->phb.opal_id, ##a)
+#define NPUERR(p, fmt, a...)	prlog(PR_ERR,   "NPU%d: " fmt, \
+				      (p)->phb.opal_id, ##a)
 
 #define NPUDEVDBG(p, fmt, a...)	NPUDBG((p)->npu, fmt, ##a)
 #define NPUDEVINF(p, fmt, a...)	NPUINF((p)->npu, fmt, ##a)
+#define NPUDEVERR(p, fmt, a...)	NPUERR((p)->npu, fmt, ##a)
 
 #endif /* __NPU_H */
