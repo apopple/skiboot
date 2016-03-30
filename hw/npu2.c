@@ -129,20 +129,6 @@ static void npu_write(struct npu_dev *dev, struct stck_reg reg, uint64_t val)
 		xscom_write(npu->chip_id, dev->xscom + offset, val);
 }
 
-static void npu_lock(struct phb *phb)
-{
-	struct npu *p = phb_to_npu(phb);
-
-	lock(&p->lock);
-}
-
-static void npu_unlock(struct phb *phb)
-{
-	struct npu *p = phb_to_npu(phb);
-
-	unlock(&p->lock);
-}
-
 /* Update the hardware BAR registers */
 static void npu_dev_bar_update(uint32_t gcid, struct npu_dev_bar *bar,
 			       int link_index, bool enable)
@@ -702,8 +688,6 @@ NPU_DEV_CFG_WRITE(16, u16, bdfn_to_cfg)
 NPU_DEV_CFG_WRITE(32, u32, bdfn_to_cfg)
 
 static const struct phb_ops npu_ops = {
-	.lock			= npu_lock,
-	.unlock			= npu_unlock,
 	.cfg_read8		= config_space_read8,
 	.cfg_read16		= config_space_read16,
 	.cfg_read32		= config_space_read32,
@@ -1267,6 +1251,7 @@ static void npu_create_phb(struct dt_node *dn)
 	p->phb.dt_node = dn;
 	p->phb.ops = &npu_ops;
 	p->phb.phb_type = phb_type_pcie_v3;
+	init_lock(&p->phb.lock);
 
 	/* Populate devices */
 	npu_create_devices(dn, p);
