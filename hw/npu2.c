@@ -47,29 +47,91 @@
  * We need access 4 SM registers in same stack in order to configure one
  * particular BAR.
  */
-#define NPU2_DEFINE_BAR(t, n, s)				\
-	{ .flags = PCI_CFG_BAR_TYPE_MEM | PCI_CFG_BAR_MEM64,	\
-	  .type  = t,						\
-	  .scom  = NPU2_SCOM_REG_OFFSET(NPU2_SCOM_##n, s, 0),	\
-	  .reg   = NPU2_REG_OFFSET(NPU2_##n, s, 0),		\
-	  .base  = 0ul,						\
-	  .size  = 0ul						\
+#define NPU2_DEFINE_BAR(t, n, s)					\
+	{ .flags = PCI_CFG_BAR_TYPE_MEM | PCI_CFG_BAR_MEM64,		\
+	  .type  = t,							\
+	  .reg   = NPU2_##n,						\
+	  .stack = s,							\
+	  .base  = 0ul,							\
+	  .size  = 0ul							\
 	}
 
 struct npu2_bar npu2_bars[] = {
-	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_GLOBAL, PHY_BAR,  2),
-	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_PHY,    PHY_BAR,  0),
-	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_PHY,    PHY_BAR,  1),
-	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_NTL,    NTL0_BAR, 0),
-	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_NTL,    NTL1_BAR, 0),
-	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_NTL,    NTL0_BAR, 1),
-	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_NTL,    NTL1_BAR, 1),
-	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_NTL,    NTL0_BAR, 2),
-	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_NTL,    NTL1_BAR, 2),
-	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_GENID,  GENID_BAR, 0),
-	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_GENID,  GENID_BAR, 1),
-	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_GENID,  GENID_BAR, 2)
+	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_GLOBAL, PHY_BAR,  NPU2_STACK_STCK_2),
+	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_PHY,    PHY_BAR,  NPU2_STACK_STCK_0),
+	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_PHY,    PHY_BAR,  NPU2_STACK_STCK_1),
+	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_NTL,    NTL0_BAR, NPU2_STACK_STCK_0),
+	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_NTL,    NTL1_BAR, NPU2_STACK_STCK_0),
+	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_NTL,    NTL0_BAR, NPU2_STACK_STCK_1),
+	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_NTL,    NTL1_BAR, NPU2_STACK_STCK_1),
+	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_NTL,    NTL0_BAR, NPU2_STACK_STCK_2),
+	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_NTL,    NTL1_BAR, NPU2_STACK_STCK_2),
+	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_GENID,  GENID_BAR, NPU2_STACK_STCK_0),
+	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_GENID,  GENID_BAR, NPU2_STACK_STCK_1),
+	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_GENID,  GENID_BAR, NPU2_STACK_STCK_2)
 };
+
+/*
+ * We use the indirect method because it uses the same addresses as
+ * the MMIO offsets (NPU RING)
+ */
+static void npu2_scom_set_addr(uint64_t gcid,
+			  uint64_t scom_base,
+			  uint64_t addr)
+{
+
+#if 0
+	/* FIXME: SIMICS doesn't implement these correctly. You just
+	 * stick the address straight in. */
+	addr = SETFIELD(NPU2_MISC_DA_ADDR, 0ul, addr);
+	addr = SETFIELD(NPU2_MISC_DA_LEN, addr, NPU2_MISC_DA_LEN_8B);
+#endif
+
+	xscom_write(gcid, scom_base + NPU2_MISC_SCOM_IND_SCOM_ADDR, addr);
+}
+
+static void npu2_scom_write(uint64_t gcid,
+			    uint64_t scom_base,
+			    uint64_t reg,
+			    uint64_t val)
+{
+	npu2_scom_set_addr(gcid, scom_base, reg);
+	xscom_write(gcid, scom_base + NPU2_MISC_SCOM_IND_SCOM_DATA, val);
+}
+
+static uint64_t npu2_scom_read(uint64_t gcid,
+				    uint64_t scom_base,
+				    uint64_t reg)
+{
+	uint64_t val;
+
+	npu2_scom_set_addr(gcid, scom_base, reg);
+	xscom_read(gcid, scom_base + NPU2_MISC_SCOM_IND_SCOM_DATA, &val);
+
+	return val;
+}
+
+static void npu2_write(struct npu2 *p, uint64_t reg, uint64_t val)
+{
+#if 0
+	/* FIXME: SIMICS doesn't seem to support the full MMIO address range */
+	if (p->regs)
+		out_be64(p->regs + reg, val);
+	else
+#endif
+		npu2_scom_write(p->chip_id, p->xscom_base, reg, val);
+}
+
+static uint64_t npu2_read(struct npu2 *p, uint64_t reg)
+{
+#if 0
+	/* FIXME: SIMICS doesn't seem to support the full MMIO address range */
+	if (p->regs)
+		return in_be64(p->regs + reg);
+	else
+#endif
+		return npu2_scom_read(p->chip_id, p->xscom_base, reg);
+}
 
 static inline void npu2_ioda_sel(struct npu2 *p, uint32_t table,
 				uint32_t index, bool autoinc)
@@ -101,23 +163,22 @@ static void npu2_read_bar(struct npu2 *p,
 			  uint32_t gcid,
 			  uint32_t scom)
 {
-	uint64_t val[4], base, size;
+	uint64_t val[NPU2_BLOCK_SM_3 + 1], base, size, reg;
 	bool enabled;
-	uint32_t i;
+	uint32_t block;
 
-	for (i = 0; i < ARRAY_SIZE(val); i++) {
+	for (block = 0; block < ARRAY_SIZE(val); block++) {
+		reg = NPU2_REG_OFFSET(bar->stack, block, bar->reg);
 		if (p)
-			val[i] = in_be64(p->regs + bar->reg + NPU2_STRIDE * i);
+			val[block] = npu2_read(p, reg);
 		else
-			xscom_read(gcid,
-				   scom + bar->scom + NPU2_SCOM_STRIDE * i,
-				   &val[i]);
+			val[block] = npu2_scom_read(gcid, scom, reg);
 
 		/* There are 4 registers for one BAR. If the values in the
 		 * registers are not same, we simply return zero, indicating
 		 * the BAR is disabled.
 		 */
-		if (i > 0 && val[i] != val[i - 1]) {
+		if (block > 0 && val[block] != val[block - 1]) {
 			val[0] = 0ul;
 			break;
 		}
@@ -159,8 +220,8 @@ static void npu2_write_bar(struct npu2 *p,
 			   uint32_t gcid,
 			   uint32_t scom)
 {
-	uint64_t val, enable;
-	int i;
+	uint64_t reg, val, enable;
+	int block;
 
 	/* FIXME: To support group/chip IDs */
 	switch (bar->type) {
@@ -184,13 +245,12 @@ static void npu2_write_bar(struct npu2 *p,
 	if (bar->flags & NPU2_BAR_FLAG_ENABLED)
 		val |= enable;
 
-	for (i = 0; i < 4; i++) {
+	for (block = NPU2_BLOCK_SM_0; block <= NPU2_BLOCK_SM_3; block++) {
+		reg = NPU2_REG_OFFSET(bar->stack, block, bar->reg);
 		if (p)
-			out_be64(p->regs + bar->reg + NPU2_STRIDE * i, val);
+			npu2_write(p, reg, val);
 		else
-			xscom_write(gcid,
-				    scom + bar->scom + NPU2_SCOM_STRIDE * i,
-				    val);
+			npu2_scom_write(gcid, scom, reg, val);
 	}
 }
 
@@ -684,18 +744,23 @@ static int64_t npu2_set_pe(struct phb *phb,
 	val = NPU2_CQ_BRICK_BDF2PE_MAP_ENABLE;
 	val = SETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_PE, val, pe_num);
 	val = SETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_BDF, val, bdfn);
-	reg = NPU2_CQ_SCOM_BRICK0_BDF2PE_MAP0 +
-	      (index / 6) * NPU2_STACK_STRIDE +
-              (index % 6) * 8;
-	p->bdf2pe_cache[i] = val;
-	out_be64(p->regs + reg, val);
 
+	if (!(index % 2))
+		reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0 + index/2,
+				      NPU2_BLOCK_CTL, NPU2_CQ_BRICK0_BDF2PE_MAP0);
+	else
+		reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0 + index/2,
+				      NPU2_BLOCK_CTL, NPU2_CQ_BRICK1_BDF2PE_MAP0);
+	p->bdf2pe_cache[i] = val;
+	npu2_write(p, reg, val);
 	val = NPU2_MISC_BRICK_BDF2PE_MAP_ENABLE;
 	val = SETFIELD(NPU2_MISC_BRICK_BDF2PE_MAP_PE, val, pe_num);
 	val = SETFIELD(NPU2_MISC_BRICK_BDF2PE_MAP_BDF, val, bdfn);
-	reg = NPU2_MISC_BRICK0_BDF2PE_MAP0 + (index * 8);
+
+	reg = NPU2_REG_OFFSET(NPU2_STACK_MISC, NPU2_BLOCK_MISC,
+			      NPU2_MISC_BRICK0_BDF2PE_MAP0 + (index * 8));
 	p->bdf2pe_cache[index + 18] = val;
-	out_be64(p->regs + reg, val);
+	npu2_write(p, reg, val);
 
 	return OPAL_SUCCESS;
 }
@@ -1158,10 +1223,16 @@ static void npu2_populate_devices(struct npu2 *p,
 		dev->npu = p;
 		dev->dt_node = link;
 		dev->index = dt_prop_get_u32(link, "ibm,npu-link-index");
-		dev->xscom = p->xscom_base + NPU2_SCOM_CQ_SM_MISC_CFG0 +
-			     NPU2_SCOM_STACK_STRIDE * (dev->index >> 1);
-		dev->regs = p->regs + NPU2_CQ_SM_MISC_CFG0 +
-			    NPU2_STACK_STRIDE * (dev->index >> 1);
+
+		/* FIXME: These are used by the hardware procedures
+		 * (npu-hw-procedures.c). Need to find the appropriate
+		 * SCOM offsets and confirm if they've change from
+		 * NVLink1. */
+		//dev->xscom = p->xscom_base + NPU2_SCOM_CQ_SM_MISC_CFG0 +
+		//	     NPU2_SCOM_STACK_STRIDE * (dev->index >> 1);
+		//dev->regs = p->regs + NPU2_CQ_SM_MISC_CFG0 +
+		//	     NPU2_STACK_STRIDE * (dev->index >> 1);
+
 		dev->lane_mask = dt_prop_get_u32(link, "ibm,npu-lane-mask");
 
 		/* Populate BARs */

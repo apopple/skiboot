@@ -11,6 +11,7 @@ HW=hw/built-in.o
 
 # FIXME hack this for now
 CFLAGS_hw/phb4.o = -Wno-unused-value -Wno-unused-parameter
+CFLAGS_hw/npu2.o = -Wno-unused-value -Wno-unused-parameter -Wno-unused-function
 
 include $(SRC)/hw/fsp/Makefile.inc
 include $(SRC)/hw/ec/Makefile.inc

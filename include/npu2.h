@@ -40,8 +40,8 @@ struct npu2_bar {
 #define NPU2_BAR_TYPE_GENID	3
 #define NPU2_BAR_TYPE_MAX	4
 	uint32_t	type;
-	uint64_t	scom;
 	uint64_t	reg;
+	uint64_t	stack;
 	uint64_t	base;
 	uint64_t	size;
 };
