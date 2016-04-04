@@ -79,7 +79,7 @@ struct pci_virt_cfg_trap *pci_virt_add_trap(struct pci_virt_device *pvd,
 {
 	struct pci_virt_cfg_trap *pvct;
 
-	if (!pvd || size || (start + size) >= pvd->cfg_size)
+	if (!pvd || !size || (start + size) >= pvd->cfg_size)
 		return NULL;
 	if (!read && !write)
 		return NULL;
