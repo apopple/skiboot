@@ -158,6 +158,26 @@ static struct npu2_dev *npu2_bdf_to_dev(struct npu2 *p,
 	return NULL;
 }
 
+static struct npu2_bar *npu2_get_bar(uint32_t type,
+				     uint32_t index)
+{
+	int32_t i;
+
+	if (type >= NPU2_BAR_TYPE_MAX)
+		return NULL;
+
+	for (i = 0; i < ARRAY_SIZE(npu2_bars); i++) {
+		if (npu2_bars[i].type == type) {
+			if (index == 0)
+				return &npu2_bars[i];
+
+			index--;
+		}
+	}
+
+	return NULL;
+}
+
 static void npu2_read_bar(struct npu2 *p,
 			  struct npu2_bar *bar,
 			  uint32_t gcid,
@@ -1115,7 +1135,7 @@ static void npu2_populate_cfg(struct npu2_dev *dev)
 	PCI_VIRT_CFG_INIT_RO(pvd, PCI_CFG_CACHE_LINE_SIZE, 4, 0x00800000);
 
 	/* 0x10 - BAR#1, NTL BAR */
-	bar = dev->bars[NPU2_BAR_TYPE_NTL];
+	bar = npu2_get_bar(NPU2_BAR_TYPE_NTL, dev->index);
 	PCI_VIRT_CFG_INIT(pvd, PCI_CFG_BAR0, 4,
 			  (bar->base & 0xfffffff0) | (bar->flags & 0xF),
 			  0x0000000f, 0x00000000);
@@ -1126,7 +1146,7 @@ static void npu2_populate_cfg(struct npu2_dev *dev)
 
 	/* 0x18/1c/20/24 - BAR#2, possibly GENID BAR */
 	if (!(dev->index % 2)) {
-		bar = dev->bars[NPU2_BAR_TYPE_GENID];
+		bar = npu2_get_bar(NPU2_BAR_TYPE_GENID, dev->index / 2);
 		PCI_VIRT_CFG_INIT(pvd, PCI_CFG_BAR2, 4,
 				  (bar->base & 0xfffffff0) | (bar->flags & 0xF),
 				  0x0000000f, 0x00000000);
