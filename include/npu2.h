@@ -29,21 +29,32 @@
 #define NPU2_MAX_PE_NUM		16
 #define NPU2_RESERVED_PE_NUM	15
 
+struct npu2_bar;
+struct npu2_genid_bar {
+#define NPU2_GENID_BAR_FLAG_SIZE_HI	0x0010
+#define NPU2_GENID_BAR_FLAG_TRAPPED	0x0020
+	uint64_t	flags;
+	uint64_t	base;
+	uint64_t	size;
+	struct npu2_bar	*bar;
+};
+
 struct npu2_bar {
 #define NPU2_BAR_FLAG_ENABLED	0x0010
 #define NPU2_BAR_FLAG_SIZE_HI	0x0020
 #define NPU2_BAR_FLAG_TRAPPED	0x0040
-	uint32_t	flags;
+	uint32_t		flags;
 #define NPU2_BAR_TYPE_GLOBAL	0
 #define NPU2_BAR_TYPE_PHY	1
 #define NPU2_BAR_TYPE_NTL	2
 #define NPU2_BAR_TYPE_GENID	3
 #define NPU2_BAR_TYPE_MAX	4
-	uint32_t	type;
-	uint64_t	reg;
-	uint64_t	stack;
-	uint64_t	base;
-	uint64_t	size;
+	uint32_t		type;
+	uint64_t		reg;
+	uint64_t		stack;
+	uint64_t		base;
+	uint64_t		size;
+	struct npu2_genid_bar	*genid_bars[2];
 };
 
 struct npu2;

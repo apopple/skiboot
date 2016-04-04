@@ -48,15 +48,23 @@
  * particular BAR.
  */
 #define NPU2_DEFINE_BAR(t, n, s)					\
-	{ .flags = PCI_CFG_BAR_TYPE_MEM | PCI_CFG_BAR_MEM64,		\
-	  .type  = t,							\
-	  .reg   = NPU2_##n,						\
-	  .stack = s,							\
-	  .base  = 0ul,							\
-	  .size  = 0ul							\
+	{ .flags         = PCI_CFG_BAR_TYPE_MEM | PCI_CFG_BAR_MEM64,	\
+	  .type          = t,						\
+	  .reg           = NPU2_##n,					\
+	  .stack         = s,						\
+	  .base	         = 0ul,						\
+	  .size          = 0ul,						\
+	  .genid_bars[0] = NULL,					\
+	  .genid_bars[1] = NULL						\
+	}
+#define NPU2_DEFINE_GENID_BAR(idx)					\
+	{ .flags         = PCI_CFG_BAR_TYPE_MEM | PCI_CFG_BAR_MEM64,	\
+	  .base          = 0ul,						\
+	  .size          = 0ul,						\
+	  .bar           = &npu2_bars[idx]				\
 	}
 
-struct npu2_bar npu2_bars[] = {
+static struct npu2_bar npu2_bars[] = {
 	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_GLOBAL, PHY_BAR,  NPU2_STACK_STCK_2),
 	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_PHY,    PHY_BAR,  NPU2_STACK_STCK_0),
 	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_PHY,    PHY_BAR,  NPU2_STACK_STCK_1),
@@ -69,6 +77,15 @@ struct npu2_bar npu2_bars[] = {
 	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_GENID,  GENID_BAR, NPU2_STACK_STCK_0),
 	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_GENID,  GENID_BAR, NPU2_STACK_STCK_1),
 	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_GENID,  GENID_BAR, NPU2_STACK_STCK_2)
+};
+
+static struct npu2_genid_bar npu2_genid_bars[] = {
+	NPU2_DEFINE_GENID_BAR(9),
+	NPU2_DEFINE_GENID_BAR(9),
+	NPU2_DEFINE_GENID_BAR(10),
+	NPU2_DEFINE_GENID_BAR(10),
+	NPU2_DEFINE_GENID_BAR(11),
+	NPU2_DEFINE_GENID_BAR(11)
 };
 
 /*
@@ -369,6 +386,72 @@ static int64_t npu2_cfg_write_bar(struct pci_virt_device *pvd,
 		bar->base &= 0x00000000ffffffff;
 		bar->base |= ((uint64_t)data << 32);
 
+		npu2_write_bar(dev->npu, bar, 0, 0);
+	}
+
+	/* To update the config cache */
+	return OPAL_PARTIAL;
+}
+
+static int64_t npu2_cfg_read_genid_bar(struct pci_virt_device *pvd __unused,
+				       struct pci_virt_cfg_trap *pvct,
+				       uint32_t offset, uint32_t size,
+				       uint32_t *data)
+{
+	struct npu2_genid_bar *genid_bar = pvct->data;
+
+	if (!(genid_bar->flags & NPU2_GENID_BAR_FLAG_TRAPPED))
+		return OPAL_PARTIAL;
+
+	if ((size != 4) ||
+	    (offset != pvct->start && offset != pvct->start + 4))
+		return OPAL_PARAMETER;
+
+	if (genid_bar->flags & NPU2_GENID_BAR_FLAG_SIZE_HI)
+		*data = genid_bar->size >> 32;
+	else
+		*data = genid_bar->size;
+
+	genid_bar->flags &= ~(NPU2_GENID_BAR_FLAG_TRAPPED |
+			      NPU2_GENID_BAR_FLAG_SIZE_HI);
+	return OPAL_SUCCESS;
+}
+
+static int64_t npu2_cfg_write_genid_bar(struct pci_virt_device *pvd,
+					struct pci_virt_cfg_trap *pvct,
+					uint32_t offset, uint32_t size,
+					uint32_t data)
+{
+	struct npu2_dev *dev = pvd->data;
+	struct npu2_genid_bar *genid_bar = pvct->data;
+	struct npu2_bar *bar = genid_bar->bar;
+
+	if ((size != 4) ||
+	    (offset != pvct->start && offset != pvct->start + 4))
+		return OPAL_PARAMETER;
+
+	/* Return BAR size on next read */
+	if (data == 0xffffffff) {
+		genid_bar->flags |= NPU2_GENID_BAR_FLAG_TRAPPED;
+		if (offset == pvct->start + 4)
+			genid_bar->flags |= NPU2_GENID_BAR_FLAG_SIZE_HI;
+
+		return OPAL_SUCCESS;
+	}
+
+	/* Update BAR base address */
+	if (offset == pvct->start) {
+		genid_bar->base &= 0xffffffff00000000;
+		genid_bar->base |= (data & 0xfffffff0);
+	} else {
+		genid_bar->base &= 0x00000000ffffffff;
+		genid_bar->base |= ((uint64_t)data << 32);
+
+		bar->base = -1UL;
+		if (bar->genid_bars[0]->base < bar->base)
+			bar->base = bar->genid_bars[0]->base;
+		if (bar->genid_bars[1]->base < bar->base)
+			bar->base = bar->genid_bars[1]->base;
 		npu2_write_bar(dev->npu, bar, 0, 0);
 	}
 
@@ -874,6 +957,15 @@ static void assign_mmio_bars(uint32_t gcid,
 	struct npu2_bar *bar;
 	uint32_t i;
 
+	/* Associate with GENID BARs */
+	bar = npu2_get_bar(NPU2_BAR_TYPE_GENID, 0);
+	for (i = 0; i < ARRAY_SIZE(npu2_genid_bars); i += 2) {
+		bar->genid_bars[0] = &npu2_genid_bars[i];
+		bar->genid_bars[1] = &npu2_genid_bars[i + 1];
+
+		bar++;
+	}
+
 	/* The hostboot might have assigned the BARs for us. However,
 	 * that layout isn't what we want. We need figure out the
 	 * valid MMIO regions and reassign them by ourselves. On
@@ -931,6 +1023,10 @@ static void assign_mmio_bars(uint32_t gcid,
 		case NPU2_BAR_TYPE_GENID:
 			bar->flags &= ~NPU2_BAR_FLAG_ENABLED;
 			bar->size = 0x20000;
+			bar->genid_bars[0]->base = mem_start;
+			bar->genid_bars[0]->size = 0x10000;
+			bar->genid_bars[1]->base = mem_start + 0x10000;
+			bar->genid_bars[1]->size = 0x10000;
 			break;
 		default:
 			bar->size = 0ul;
@@ -1116,6 +1212,7 @@ static void npu2_populate_cfg(struct npu2_dev *dev)
 {
 	struct pci_virt_device *pvd = dev->pvd;
 	struct npu2_bar *bar;
+	struct npu2_genid_bar *genid_bar;
 	uint32_t pos;
 
 	/* 0x00 - Vendor/Device ID */
@@ -1134,7 +1231,7 @@ static void npu2_populate_cfg(struct npu2_dev *dev)
 	/* 0x0c - CLS/Latency Timer/Header/BIST */
 	PCI_VIRT_CFG_INIT_RO(pvd, PCI_CFG_CACHE_LINE_SIZE, 4, 0x00800000);
 
-	/* 0x10 - BAR#1, NTL BAR */
+	/* 0x10/14 - BAR#0, NTL BAR */
 	bar = npu2_get_bar(NPU2_BAR_TYPE_NTL, dev->index);
 	PCI_VIRT_CFG_INIT(pvd, PCI_CFG_BAR0, 4,
 			  (bar->base & 0xfffffff0) | (bar->flags & 0xF),
@@ -1144,19 +1241,19 @@ static void npu2_populate_cfg(struct npu2_dev *dev)
 	pci_virt_add_trap(pvd, PCI_CFG_BAR0, 8,
 			  npu2_cfg_read_bar, npu2_cfg_write_bar, bar);
 
-	/* 0x18/1c/20/24 - BAR#2, possibly GENID BAR */
-	if (!(dev->index % 2)) {
-		bar = npu2_get_bar(NPU2_BAR_TYPE_GENID, dev->index / 2);
-		PCI_VIRT_CFG_INIT(pvd, PCI_CFG_BAR2, 4,
-				  (bar->base & 0xfffffff0) | (bar->flags & 0xF),
-				  0x0000000f, 0x00000000);
-		PCI_VIRT_CFG_INIT(pvd, PCI_CFG_BAR3, 4, (bar->base >> 32),
-				  0x00000000, 0x00000000);
-		pci_virt_add_trap(pvd, PCI_CFG_BAR2, 8,
-				  npu2_cfg_read_bar, npu2_cfg_write_bar, bar);
-	} else {
-		PCI_VIRT_CFG_INIT_RO(pvd, PCI_CFG_BAR2, 4, 0x00000000);
-	}
+	/* 0x18/1c - BAR#1, GENID BAR */
+	genid_bar = &npu2_genid_bars[dev->index];
+	PCI_VIRT_CFG_INIT(pvd, PCI_CFG_BAR2, 4,
+			  (genid_bar->base & 0xfffffff0) |
+			  (genid_bar->flags & 0xF),
+			  0x0000000f, 0x00000000);
+	PCI_VIRT_CFG_INIT(pvd, PCI_CFG_BAR3, 4,
+			  (genid_bar->base >> 32),
+			  0x00000000, 0x00000000);
+	pci_virt_add_trap(pvd, PCI_CFG_BAR2, 8,
+			  npu2_cfg_read_genid_bar,
+			  npu2_cfg_write_genid_bar,
+			  genid_bar);
 
 	/* 0x20/0x24 - BARs, disabled */
 	PCI_VIRT_CFG_INIT_RO(pvd, PCI_CFG_BAR4, 4, 0x00000000);
