@@ -258,6 +258,10 @@ static struct dt_node *add_xscom_node(uint64_t base, uint32_t hw_id,
 		dt_add_property_strings(node, "compatible",
 					"ibm,xscom", "ibm,power8-xscom");
 		break;
+	case proc_gen_p9:
+		dt_add_property_strings(node, "compatible",
+					"ibm,xscom", "ibm,power9-xscom");
+		break;
 	default:
 		dt_add_property_strings(node, "compatible", "ibm,xscom");
 	}
@@ -305,6 +309,12 @@ static void add_psihb_node(struct dt_node *np)
 		psi_comp = "ibm,power7-psihb-x";
 		break;
 	case proc_gen_p8:
+		psi_scom = 0x2010900;
+		psi_slen = 0x20;
+		psi_comp = "ibm,power8-psihb-x";
+		break;
+	case proc_gen_p9:
+		// FIXME: using p8 settings here.
 		psi_scom = 0x2010900;
 		psi_slen = 0x20;
 		psi_comp = "ibm,power8-psihb-x";
@@ -566,6 +576,8 @@ static void add_chiptod_node(unsigned int chip_id, int flags)
 		break;
 	case proc_gen_p8:
 		compat_str = "ibm,power8-chiptod";
+	case proc_gen_p9:
+		compat_str = "ibm,power9-chiptod";
 		break;
 	default:
 		return;
@@ -705,6 +717,9 @@ static void add_nx_node(u32 gcid)
 		break;
 	case proc_gen_p8:
 		cp_str = "ibm,power8-nx";
+		break;
+	case proc_gen_p9:
+		cp_str = "ibm,power9-nx";
 		break;
 	default:
 		return;

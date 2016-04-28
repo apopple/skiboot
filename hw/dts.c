@@ -203,6 +203,10 @@ static int dts_read_core_temp(uint32_t pir, struct dts *dts)
 	case proc_gen_p8:
 		rc = dts_read_core_temp_p8(pir, dts);
 		break;
+	case proc_gen_p9:
+		// FIXME: using POWER8 here
+		rc = dts_read_core_temp_p8(pir, dts);
+		break;
 	default:
 		assert(false);
 	}

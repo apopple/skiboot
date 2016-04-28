@@ -326,6 +326,12 @@ static void io_add_p8_cec_vpd(const struct HDIF_common_hdr *sp_iohubs)
 	io_get_lx_info(kwvpd, kwvpd_sz, 0, dt_root);
 }
 
+static void io_add_p9_cec_vpd(const struct HDIF_common_hdr *sp_iohubs)
+{
+	prlog(PR_WARNING, "CEC: WARNING POWER( using POWER8 cec VPD code");
+	io_add_p9_cec_vpd(sp_iohubs);
+}
+
 static void io_parse_fru(const void *sp_iohubs)
 {
 	unsigned int i;
@@ -402,6 +408,10 @@ static void io_parse_fru(const void *sp_iohubs)
 	/* On P8, grab the CEC VPD */
 	if (proc_gen == proc_gen_p8)
 		io_add_p8_cec_vpd(sp_iohubs);
+
+	/* On P9, grab the CEC VPD */
+	if (proc_gen == proc_gen_p9)
+		io_add_p9_cec_vpd(sp_iohubs);
 }
 
 void io_parse(void)

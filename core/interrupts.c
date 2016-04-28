@@ -125,6 +125,11 @@ uint32_t get_psi_interrupt(uint32_t chip_id)
 		irq = p8_chip_irq_block_base(chip_id, P8_IRQ_BLOCK_MISC);
 		irq += P8_IRQ_MISC_PSI_BASE;
 		break;
+	case proc_gen_p9:
+		prlog(PR_WARNING, "IRQ: FIXME hacking POWER9 IRQs to look like POWER8\n");
+		irq = p8_chip_irq_block_base(chip_id, P8_IRQ_BLOCK_MISC);
+		irq += P8_IRQ_MISC_PSI_BASE;
+		break;
 	default:
 		assert(false);
 	};
@@ -268,6 +273,11 @@ static uint32_t p8_chip_id_bits(uint32_t chip)
 
 	case PROC_CHIP_P8_NAPLES:
 		return 5;
+		break;
+
+	case PROC_CHIP_P9_NIMBUS:
+	case PROC_CHIP_P9_CUMULUS:
+		return 5; /* FIXME: what is this?? */
 		break;
 
 	default:
