@@ -31,6 +31,8 @@
 #include <npu2.h>
 #include <lock.h>
 #include <xscom.h>
+#include <bitutils.h>
+#include <chip.h>
 
 /*
  * NPU2 BAR layout definition. We have 3 stacks and each of them contains
@@ -1373,7 +1375,7 @@ static void npu2_add_phb_properties(struct npu2 *p)
 {
 	struct dt_node *np = p->phb.dt_node;
 	uint32_t icsp = get_ics_phandle();
-	uint64_t mm_base, mm_size, tkill;
+	uint64_t mm_base, mm_size, tkill, mmio_atsd;
 
 	/* Add various properties that HB doesn't have to
 	 * add, some of them simply because they result from
@@ -1396,6 +1398,11 @@ static void npu2_add_phb_properties(struct npu2 *p)
 	tkill = cleanup_addr((uint64_t)p->regs) + NPU2_ATS_TCE_KILL;
 	dt_add_property_cells(np, "ibm,opal-tce-kill",
 			      hi32(tkill), lo32(tkill));
+
+	mmio_atsd = (u64) p->regs +
+		NPU2_REG_OFFSET(NPU2_STACK_ATSD, NPU2_BLOCK_ATSD0, NPU2_XTS_MMIO_ATSD_LAUNCH);
+	dt_add_property_cells(np, "ibm,mmio-atsd", hi32(mmio_atsd),
+			      lo32(mmio_atsd));
 
 	/* Memory window is exposed as 64-bits non-prefetchable
 	 * one because 64-bits prefetchable one is kind of special
@@ -1440,7 +1447,8 @@ static void npu2_create_phb(struct dt_node *dn)
 	/* Generic PHB */
 	p->phb.dt_node = dn;
 	p->phb.ops = &npu_ops;
-	p->phb.phb_type = phb_type_pcie_v3;
+	p->phb.phb_type = phb_type_npu_v2;
+	init_lock(&p->lock);
 	init_lock(&p->phb.lock);
 	list_head_init(&p->phb.devices);
 	list_head_init(&p->phb.virt_devices);
@@ -1466,3 +1474,201 @@ void probe_npu2(void)
 	dt_for_each_compatible(dt_root, np, "ibm,power9-npu-pciex")
 		npu2_create_phb(np);
 }
+
+/*
+ * Search a table for an entry with matching value under mask. Returns
+ * the index and the current value in *value.
+ */
+static int npu_table_search(struct npu2 *p, uint64_t table_addr,
+			    int table_size, uint64_t *value, uint64_t mask)
+{
+	int i;
+	uint64_t val;
+
+	assert(value);
+
+	for (i = 0; i < table_size; i++) {
+		val = npu2_read(p, table_addr + i*8);
+		if ((val & mask) == *value) {
+			*value = val;
+			return i;
+		}
+	}
+
+	return -1;
+}
+
+/*
+ * Allocate a context ID and initialise the tables with the relevant
+ * information. Returns the ID on or error if one couldn't be
+ * allocated.
+ */
+static int64_t opal_npu_init_context(uint64_t phb_id, int pasid, uint64_t msr,
+				     uint64_t lpid)
+{
+	struct phb *phb = pci_get_phb(phb_id);
+	struct npu2 *p = phb_to_npu2(phb);
+	uint64_t xts_bdf, xts_bdf_pid = 0;
+	int id, lparshort;
+
+	if (!phb || phb->phb_type != phb_type_npu_v2)
+		return OPAL_PARAMETER;
+
+	/*
+	 * We need to setup the context information in the tables for
+	 * the given lpid. There are possibly several chips in this
+	 * system with different BDF->LPID mappings. We need to search
+	 * all chips for a matching LPID and setup the contexts to
+	 * match those appropriately.
+	 */
+
+	/*
+	 * Need to get LPARSHORT.
+	 */
+	lock(&p->lock);
+	xts_bdf = SETFIELD(NPU2_XTS_BDF_MAP_LPARID, 0, lpid);
+	if (npu_table_search(p, NPU2_XTS_BDF_MAP, NPU2_XTS_BDF_MAP_SIZE,
+			     &xts_bdf, NPU2_XTS_BDF_MAP_LPARID) < 0) {
+		NPU2ERR(p, "LPARID not associated with any GPU\n");
+		id = OPAL_PARAMETER;
+		goto out;
+	}
+
+	lparshort = GETFIELD(NPU2_XTS_BDF_MAP_LPARSHORT, xts_bdf);
+	NPU2DBG(p, "Found LPARSHORT = 0x%x for LPID = 0x%03llx\n", lparshort,
+		lpid);
+
+	/*
+	 * Need to find a free context.
+	 */
+	id = npu_table_search(p, NPU2_XTS_PID_MAP, NPU2_XTS_PID_MAP_SIZE,
+			      &xts_bdf_pid, -1UL);
+	if (id < 0) {
+		NPU2ERR(p, "No XTS contexts available\n");
+		id = OPAL_RESOURCE;
+		goto out;
+	}
+
+	/* Enable this mapping for both real and virtual addresses */
+	xts_bdf_pid = SETFIELD(NPU2_XTS_PID_MAP_VALID_ATRGPA0, 0UL, 1);
+	xts_bdf_pid = SETFIELD(NPU2_XTS_PID_MAP_VALID_ATRGPA1, xts_bdf_pid, 1);
+
+	/* Enables TLBIE/MMIOSD forwarding for this entry */
+	xts_bdf_pid = SETFIELD(NPU2_XTS_PID_MAP_VALID_ATSD, xts_bdf_pid, 1);
+	xts_bdf_pid = SETFIELD(NPU2_XTS_PID_MAP_LPARSHORT, xts_bdf_pid,
+			       lparshort);
+
+	/* Set the relevant MSR bits */
+	//msr = MSR_DR | MSR_PR;
+	xts_bdf_pid = SETFIELD(NPU2_XTS_PID_MAP_MSR_DR, xts_bdf_pid,
+			       !!(msr & MSR_DR));
+	xts_bdf_pid = SETFIELD(NPU2_XTS_PID_MAP_MSR_TA, xts_bdf_pid,
+			       !!(msr & MSR_TA));
+	xts_bdf_pid = SETFIELD(NPU2_XTS_PID_MAP_MSR_HV, xts_bdf_pid,
+			       !!(msr & MSR_HV));
+	xts_bdf_pid = SETFIELD(NPU2_XTS_PID_MAP_MSR_PR, xts_bdf_pid,
+			       !!(msr & MSR_PR));
+	xts_bdf_pid = SETFIELD(NPU2_XTS_PID_MAP_MSR_US, xts_bdf_pid,
+			       !!(msr & MSR_US));
+	xts_bdf_pid = SETFIELD(NPU2_XTS_PID_MAP_MSR_SF, xts_bdf_pid,
+			       !!(msr & MSR_SF));
+	xts_bdf_pid = SETFIELD(NPU2_XTS_PID_MAP_MSR_UV, xts_bdf_pid,
+			       !!(msr & MSR_UV));
+
+	/* Finally set the PID/PASID */
+	xts_bdf_pid = SETFIELD(NPU2_XTS_PID_MAP_PASID, xts_bdf_pid, pasid);
+
+	/* Write the entry */
+	NPU2DBG(p, "XTS_PID_MAP[%03d] = 0x%08llx\n", id, xts_bdf_pid);
+	npu2_write(p, NPU2_XTS_PID_MAP + id*0x20, xts_bdf_pid);
+
+out:
+	unlock(&p->lock);
+	return id;
+}
+opal_call(OPAL_NPU_INIT_CONTEXT, opal_npu_init_context, 4);
+
+static int opal_npu_destroy_context(uint64_t phb_id, uint64_t id)
+{
+	struct phb *phb = pci_get_phb(phb_id);
+	struct npu2 *p = phb_to_npu2(phb);
+
+	if (!phb || phb->phb_type != phb_type_npu_v2)
+		return OPAL_PARAMETER;
+
+	if (id >= NPU2_XTS_PID_MAP_SIZE)
+		return OPAL_PARAMETER;
+
+	lock(&p->lock);
+	npu2_write(p, NPU2_XTS_PID_MAP + id*0x20, 0);
+	unlock(&p->lock);
+
+	return OPAL_SUCCESS;
+}
+opal_call(OPAL_NPU_DESTROY_CONTEXT, opal_npu_destroy_context, 2);
+
+/*
+ * Map the given virtual bdf to lparid with given lpcr.
+ */
+static int opal_npu_map_lpar(uint64_t phb_id, uint64_t bdf, uint64_t lparid,
+	uint64_t lpcr)
+{
+	struct phb *phb = pci_get_phb(phb_id);
+	struct npu2 *p = phb_to_npu2(phb);
+	uint64_t xts_bdf_lpar, rc;
+	int id;
+
+	if (!phb || phb->phb_type != phb_type_npu_v2)
+		return OPAL_PARAMETER;
+
+	lock(&p->lock);
+
+	/* Find any existing entries and update them */
+	xts_bdf_lpar = SETFIELD(NPU2_XTS_BDF_MAP_VALID, 0UL, 1);
+	xts_bdf_lpar = SETFIELD(NPU2_XTS_BDF_MAP_LPARID, xts_bdf_lpar, lparid);
+	id = npu_table_search(p, NPU2_XTS_BDF_MAP, NPU2_XTS_BDF_MAP_SIZE,
+			      &xts_bdf_lpar,
+			      NPU2_XTS_BDF_MAP_VALID |
+			      NPU2_XTS_BDF_MAP_LPARID);
+	if (id < 0) {
+		/* No existing mapping found, find space for a new one */
+		xts_bdf_lpar = 0;
+		id = npu_table_search(p, NPU2_XTS_BDF_MAP, NPU2_XTS_BDF_MAP_SIZE,
+				      &xts_bdf_lpar, -1UL);
+	}
+
+	if (id < 0) {
+		/* Unable to find a free mapping */
+		NPU2ERR(p, "No free XTS_BDF[] entry\n");
+		rc = OPAL_RESOURCE;
+		goto out;
+	}
+
+	xts_bdf_lpar = SETFIELD(NPU2_XTS_BDF_MAP_VALID, 0UL, 1);
+	xts_bdf_lpar = SETFIELD(NPU2_XTS_BDF_MAP_BDF, xts_bdf_lpar, bdf);
+	xts_bdf_lpar = SETFIELD(NPU2_XTS_BDF_MAP_LPARID, xts_bdf_lpar, lparid);
+
+	/* TODO: Work out LPCR bits and copy them across as required */
+	NPU2DBG(p, "XTS_BDF_MAP[%03d] = 0x%08llx\n", id, xts_bdf_lpar);
+	npu2_write(p, NPU2_XTS_BDF_MAP + id*8, xts_bdf_lpar);
+
+out:
+	unlock(&p->lock);
+	return rc;
+}
+opal_call(OPAL_NPU_MAP_LPAR, opal_npu_map_lpar, 4);
+
+/*
+ * Setup the the Nest MMU PTCR register.
+ */
+#define NMMU_CFG_XLAT_CTL_PTCR 0x5012c4b
+static int opal_nmmu_set_ptcr(uint64_t ptcr)
+{
+	struct proc_chip *chip;
+
+	for_each_chip(chip)
+		xscom_write(chip->id, NMMU_CFG_XLAT_CTL_PTCR, ptcr);
+
+	return OPAL_SUCCESS;
+}
+opal_call(OPAL_NMMU_SET_PTCR, opal_nmmu_set_ptcr, 1);

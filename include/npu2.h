@@ -105,6 +105,10 @@ struct npu2 {
 	uint64_t	tve_cache[16];
 	bool		tx_zcal_complete[2];
 
+	/* Used to protect global MMIO space, in particular the XTS
+	 * tables. */
+	struct lock	lock;
+
 	struct phb	phb;
 };
 
