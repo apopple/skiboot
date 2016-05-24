@@ -311,7 +311,10 @@ static int64_t phb4_pcicfg_read(struct phb4 *p, uint32_t bdfn,
 
 	addr = PHB_CA_ENABLE;
 	addr = SETFIELD(PHB_CA_BDFN, addr, bdfn);
-	addr = SETFIELD(PHB_CA_REG, addr, offset & ~3u);
+	/* We *should* mask out the bottom bits are they are read-only and
+	 * hard wired to 0 but SIMICS bug ...
+	 */
+	addr = SETFIELD(PHB_CA_REG, addr, offset/* & ~3u*/);
 	addr = SETFIELD(PHB_CA_PE, addr, pe);
 	if (use_asb) {
 		phb4_write_reg_asb(p, PHB_CONFIG_ADDRESS, addr);
@@ -408,7 +411,10 @@ static int64_t phb4_pcicfg_write(struct phb4 *p, uint32_t bdfn,
 
 	addr = PHB_CA_ENABLE;
 	addr = SETFIELD(PHB_CA_BDFN, addr, bdfn);
-	addr = SETFIELD(PHB_CA_REG, addr, offset & ~3u);
+	/* We *should* mask out the bottom bits are they are read-only and
+	 * hard wired to 0 but SIMICS bug ...
+	 */
+	addr = SETFIELD(PHB_CA_REG, addr, offset/* & ~3u*/);
 	addr = SETFIELD(PHB_CA_PE, addr, pe);
 	if (use_asb) {
 		/* We don't support ASB config space writes */
