@@ -129,13 +129,17 @@ static int xscom_handle_error(uint64_t hmer, uint32_t gcid, uint32_t pcb_addr,
 	 * recovery procedures
 	 */
 	switch(stat) {
-	/* XSCOM blocked, just retry */
-	case 1:
+	case 1: /* XSCOM blocked, just retry */
 		return OPAL_BUSY;
-	/* CPU is asleep, don't retry */
-	case 2:
+	case 2: /* Chiplet offline, no retry */
 		return OPAL_WRONG_STATE;
-	}
+	case 3: /* Partial good */
+	case 4: /* Invalid address / address error */
+	case 5: /* Clock error */
+	case 6: /* Parity error  */
+	case 7: /* Time out */
+		break;
+	};
 
 	/* XXX: Create error log entry ? */
 	log_simple_error(&e_info(OPAL_RC_XSCOM_RW),
@@ -254,7 +258,7 @@ static int xscom_indirect_read(uint32_t gcid, uint64_t pcb_addr, uint64_t *val)
 	uint64_t data;
 	int rc, retries;
 
-	if (proc_gen != proc_gen_p8) {
+	if (proc_gen < proc_gen_p8) {
 		*val = (uint64_t)-1;
 		return OPAL_UNSUPPORTED;
 	}
@@ -297,7 +301,7 @@ static int xscom_indirect_write(uint32_t gcid, uint64_t pcb_addr, uint64_t val)
 	uint64_t data;
 	int rc, retries;
 
-	if (proc_gen != proc_gen_p8)
+	if (proc_gen < proc_gen_p8)
 		return OPAL_UNSUPPORTED;
 
 	/* Write indirect address & data */
@@ -334,8 +338,13 @@ static uint32_t xscom_decode_chiplet(uint32_t partid, uint64_t *pcb_addr)
 	uint32_t gcid = (partid & 0x0fffffff) >> 4;
 	uint32_t core = partid & 0xf;
 
-	*pcb_addr |= P8_EX_PCB_SLAVE_BASE;
-	*pcb_addr |= core << 24;
+	if (proc_gen == proc_gen_p9) {
+		/* XXX Not supported */
+		*pcb_addr = 0;
+	} else {
+		*pcb_addr |= P8_EX_PCB_SLAVE_BASE;
+		*pcb_addr |= core << 24;
+	}
 
 	return gcid;
 }
@@ -357,6 +366,8 @@ int xscom_read(uint32_t partid, uint64_t pcb_addr, uint64_t *val)
 		return centaur_xscom_read(partid, pcb_addr, val);
 	case 4: /* EX chiplet */
 		gcid = xscom_decode_chiplet(partid, &pcb_addr);
+		if (pcb_addr == 0)
+			return OPAL_UNSUPPORTED;
 		break;
 	default:
 		return OPAL_PARAMETER;
