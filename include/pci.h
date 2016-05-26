@@ -361,6 +361,11 @@ struct phb_ops {
 	 */
 	int64_t (*pci_msi_eoi)(struct phb *phb, uint32_t hwirq);
 
+	/* TCE Kill abstraction */
+	int64_t (*tce_kill)(struct phb *phb, uint32_t kill_type,
+			    uint32_t pe_num, uint32_t tce_size,
+			    uint64_t dma_addr, uint32_t npages);
+
 	/*
 	 * Slot control
 	 */
@@ -446,6 +451,7 @@ enum phb_type {
 	phb_type_pcie_v1,
 	phb_type_pcie_v2,
 	phb_type_pcie_v3,
+	phb_type_pcie_v4,
 };
 
 struct phb {

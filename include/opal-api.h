@@ -167,7 +167,8 @@
 #define	OPAL_INT_SET_CPPR			119
 #define OPAL_INT_EOI				120
 #define OPAL_INT_SET_MFRR			121
-#define OPAL_LAST				121
+#define OPAL_PCI_TCE_KILL			122
+#define OPAL_LAST				122
 
 /* Device tree flags */
 
@@ -722,7 +723,8 @@ enum {
 
 enum {
 	OPAL_PHB_ERROR_DATA_TYPE_P7IOC = 1,
-	OPAL_PHB_ERROR_DATA_TYPE_PHB3 = 2
+	OPAL_PHB_ERROR_DATA_TYPE_PHB3 = 2,
+	OPAL_PHB_ERROR_DATA_TYPE_PHB4 = 3
 };
 
 enum {
@@ -855,6 +857,11 @@ struct OpalIoPhb3ErrorData {
 	__be64 dma1ErrorLog1;		/* E48 */
 	__be64 pestA[OPAL_PHB3_NUM_PEST_REGS];
 	__be64 pestB[OPAL_PHB3_NUM_PEST_REGS];
+};
+
+struct OpalIoPhb4ErrorData {
+	struct OpalIoPhbErrorCommon common;
+	// FIXME add phb4 specific stuff
 };
 
 enum {
@@ -996,6 +1003,13 @@ struct opal_i2c_request {
 enum {
 	OPAL_REBOOT_NORMAL = 0,
 	OPAL_REBOOT_PLATFORM_ERROR,
+};
+
+/* Argument to OPAL_PCI_TCE_KILL */
+enum {
+	OPAL_PCI_TCE_KILL_PAGES,
+	OPAL_PCI_TCE_KILL_PE,
+	OPAL_PCI_TCE_KILL_ALL,
 };
 
 #endif /* __ASSEMBLY__ */
