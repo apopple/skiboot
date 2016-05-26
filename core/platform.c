@@ -98,7 +98,10 @@ opal_call(OPAL_CEC_REBOOT2, opal_cec_reboot2, 2);
 
 static void generic_platform_init(void)
 {
-	force_dummy_console();
+	if (uart_enabled())
+		uart_setup_opal_console();
+	else
+		force_dummy_console();
 	fake_rtc_init();
 }
 

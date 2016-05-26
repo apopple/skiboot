@@ -228,6 +228,7 @@ extern void nvram_read_complete(bool success);
 /* UART stuff */
 extern void uart_setup_linux_passthrough(void);
 extern void uart_setup_opal_console(void);
+extern bool uart_enabled(void);
 
 /* OCC interrupt */
 extern void occ_interrupt(uint32_t chip_id);
