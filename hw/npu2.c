@@ -503,7 +503,7 @@ static int __npu2_bind_one_GPU(struct phb *phb __unused,
 		return 0;
 
 	/* Find the PCI devices pbcq */
-	while ((dn = pd->dn->parent)) {
+	for(dn = pd->dn; dn; dn = dn->parent) {
 		if (dt_find_property(dn, "ibm,pbcq"))
 			break;
 	}
