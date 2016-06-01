@@ -1703,15 +1703,19 @@ static void npu_add_phb_properties(struct npu *p)
         dt_add_property_cells(np, "interrupt-parent", icsp);
 
         /* DLPL Interrupts */
-        p->phb.lstate.int_size = 1;
-        p->phb.lstate.int_val[0][0] = p->base_lsi + NPU_LSI_INT_DL0;
-        p->phb.lstate.int_val[1][0] = p->base_lsi + NPU_LSI_INT_DL1;
-        p->phb.lstate.int_val[2][0] = p->base_lsi + NPU_LSI_INT_DL2;
-        p->phb.lstate.int_val[3][0] = p->base_lsi + NPU_LSI_INT_DL3;
-        p->phb.lstate.int_parent[0] = icsp;
-        p->phb.lstate.int_parent[1] = icsp;
-        p->phb.lstate.int_parent[2] = icsp;
-        p->phb.lstate.int_parent[3] = icsp;
+	p->phb.lstate.int_size = 2;
+	p->phb.lstate.int_val[0][0] = p->base_lsi + NPU_LSI_INT_DL0;
+	p->phb.lstate.int_val[0][1] = 1;
+	p->phb.lstate.int_val[1][0] = p->base_lsi + NPU_LSI_INT_DL1;
+	p->phb.lstate.int_val[1][1] = 1;
+	p->phb.lstate.int_val[2][0] = p->base_lsi + NPU_LSI_INT_DL2;
+	p->phb.lstate.int_val[2][1] = 1;
+	p->phb.lstate.int_val[3][0] = p->base_lsi + NPU_LSI_INT_DL3;
+	p->phb.lstate.int_val[3][1] = 1;
+	p->phb.lstate.int_parent[0] = icsp;
+	p->phb.lstate.int_parent[1] = icsp;
+	p->phb.lstate.int_parent[2] = icsp;
+	p->phb.lstate.int_parent[3] = icsp;
 
 	/* Due to the way the emulated PCI devices are structured in
 	 * the device tree the core PCI layer doesn't do this for
