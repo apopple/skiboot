@@ -64,7 +64,7 @@ DEFINE_LOG_ENTRY(OPAL_RC_UART_INIT, OPAL_PLATFORM_ERR_EVT, OPAL_UART,
 static struct lock uart_lock = LOCK_UNLOCKED;
 static struct dt_node *uart_node;
 static uint32_t uart_base;
-static bool has_irq, irq_ok, rx_full, tx_full;
+static bool has_irq = false, irq_ok, rx_full, tx_full;
 static uint8_t tx_room;
 static uint8_t cached_ier;
 static void *mmio_uart_base;
@@ -120,6 +120,7 @@ static void uart_update_ier(void)
 
 	if (!has_irq)
 		return;
+
 	/* If we have never got an interrupt, enable them all,
 	 * the first interrupt received will tell us if interrupts
 	 * are functional (some boards are missing an EC or FPGA
@@ -496,12 +497,13 @@ static struct lpc_client uart_lpc_client = {
 	.interrupt = uart_irq,
 };
 
-void uart_init(bool use_interrupt)
+void uart_init(void)
 {
 	const struct dt_property *prop;
 	struct dt_node *n;
 	char *path __unused;
-	uint32_t chip_id, irq;
+	uint32_t chip_id;
+	const uint32_t *irqp;
 
 	/* UART lock is in the console path and thus must block
 	 * printf re-entrancy
@@ -513,6 +515,9 @@ void uart_init(bool use_interrupt)
 	if (!n)
 		return;
 
+	/* Read the interrupts property if any */
+	irqp = dt_prop_get_def(n, "interrupts", NULL);
+
 	/* Now check if the UART is on the root bus. This is the case of
 	 * directly mapped UARTs in simulation environments
 	 */
@@ -523,6 +528,13 @@ void uart_init(bool use_interrupt)
 			printf("UART: Failed to translate address !\n");
 			return;
 		}
+
+		/* If it has an interrupt properly, we consider this to be
+		 * a direct XICS/XIVE interrupt
+		 */
+		if (irqp)
+			has_irq = true;
+
 	} else {
 		if (!lpc_present())
 			return;
@@ -540,6 +552,16 @@ void uart_init(bool use_interrupt)
 			return;
 		}
 		uart_base = dt_property_get_cell(prop, 1);
+
+		if (irqp) {
+			uint32_t irq = be32_to_cpu(*irqp);
+
+			chip_id = dt_get_chip_id(uart_node);
+			uart_lpc_client.interrupts = LPC_IRQ(irq);
+			lpc_register_client(chip_id, &uart_lpc_client);
+			prlog(PR_DEBUG, "UART: Using LPC IRQ %d\n", irq);
+			has_irq = true;
+		}
 	}
 
 
@@ -558,20 +580,5 @@ void uart_init(bool use_interrupt)
 
 	/* Install console backend for printf() */
 	set_console(&uart_con_driver);
-
-	/* On Naples, use the SerIRQ, which Linux will have to share with
-	 * OPAL as we don't really play the cascaded interrupt game at this
-	 * point...
-	 */
-	if (use_interrupt) {
-		chip_id = dt_get_chip_id(uart_node);
-
-		irq = dt_prop_get_u32(n, "interrupts");
-		uart_lpc_client.interrupts = LPC_IRQ(irq);
-		lpc_register_client(chip_id, &uart_lpc_client);
-		has_irq = true;
-		prlog(PR_DEBUG, "UART: Using LPC IRQ %d\n", irq);
-	} else
-		has_irq = false;
 }
 

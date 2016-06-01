@@ -725,10 +725,12 @@ void __noreturn main_cpu_entry(const void *fdt, u32 master_cpu)
 	 * to access chips via that path early on.
 	 */
 	init_chips();
+
+	/* If we detect the mambo simulator, we can enable its special console
+	 * early on. Do that now.
+	 */
 	if (chip_quirk(QUIRK_MAMBO_CALLOUTS))
 		enable_mambo_console();
-	if (chip_quirk(QUIRK_SIMICS))
-		uart_init(false);
 
 	/* Do this here as init_boot_cpu is too early for chip_quirk */
 	/* FIXME: this hack should go away when qemu supports power9 xscoms etc */
