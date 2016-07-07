@@ -329,50 +329,57 @@ out_free:
 	return rc;
 }
 
-static int insert_bl_prot_range(struct blocklevel_range *ranges, struct bl_prot_range range)
+static bool insert_bl_prot_range(struct blocklevel_range *ranges, struct bl_prot_range range)
 {
-	struct bl_prot_range *new_ranges;
-	struct bl_prot_range *old_ranges = ranges->prot;
-	int i, count = ranges->n_prot;
+	int pos, len, i;
+	bool found = false;
+	struct bl_prot_range *new_ranges = ranges->prot;
 
-	/* Try to merge into an existing range */
-	for (i = 0; i < count; i++) {
-		if (!(range.start + range.len == old_ranges[i].start ||
-			  old_ranges[i].start + old_ranges[i].len == range.start))
-			continue;
-
-		if (range.start + range.len == old_ranges[i].start)
-			old_ranges[i].start = range.start;
-
-		old_ranges[i].len += range.len;
-
-		/*
-		 * Check the inserted range isn't wedged between two ranges, if it
-		 * is, merge as well
-		 */
-		i++;
-		if (i < count && range.start + range.len == old_ranges[i].start) {
-			old_ranges[i - 1].len += old_ranges[i].len;
-
-			for (; i + 1 < count; i++)
-				old_ranges[i] = old_ranges[i + 1];
-			ranges->n_prot--;
+	pos = range.start;
+	len = range.len;
+	for (i = 0; i < ranges->n_prot && !found; i++) {
+		/* Fits entirely within the range */
+		if (ranges->prot[i].start <= pos &&
+				ranges->prot[i].start + ranges->prot[i].len >= pos + len) {
+			found = true;
+			break; /* Might as well, the next two conditions can't be true */
 		}
 
-		return 0;
+		if (ranges->prot[i].start <= pos &&
+			ranges->prot[i].start + ranges->prot[i].len > pos) {
+			ranges->prot[i].len += len;
+			found = true;
+			if (++i == ranges->n_prot) break;
+		}
+
+		if (ranges->prot[i].start >= pos &&
+			ranges->prot[i].start < pos + len) {
+			/* If it is adjacent to two ranges */
+			if (found) {
+				int j;
+				ranges->prot[i - 1].len += len + ranges->prot[i].len;
+				for (j = i; j < ranges->n_prot - 1; j++)
+					memcpy(&ranges->prot[j] , &ranges->prot[j + 1], sizeof(range));
+				ranges->n_prot--;
+			} else {
+				ranges->prot[i].start = pos;
+				ranges->prot[i].len += len;
+				found = true;
+			}
+		}
 	}
 
-	if (ranges->n_prot == ranges->total_prot) {
-		new_ranges = realloc(ranges->prot, sizeof(range) * ((ranges->n_prot) + PROT_REALLOC_NUM));
-		if (new_ranges)
-			ranges->total_prot += PROT_REALLOC_NUM;
-	} else {
-		new_ranges = old_ranges;
-	}
-	if (new_ranges) {
-		memcpy(new_ranges + ranges->n_prot, &range, sizeof(range));
-		ranges->prot = new_ranges;
-		ranges->n_prot++;
+	if (!found) {
+		if (ranges->n_prot == ranges->total_prot) {
+			new_ranges = realloc(ranges->prot, sizeof(range) * ((ranges->n_prot) + PROT_REALLOC_NUM));
+			if (new_ranges)
+				ranges->total_prot += PROT_REALLOC_NUM;
+		}
+		if (new_ranges) {
+			memcpy(&new_ranges[ranges->n_prot], &range, sizeof(range));
+			ranges->prot = new_ranges;
+			ranges->n_prot++;
+		}
 	}
 
 	return !new_ranges;
@@ -387,11 +394,7 @@ int blocklevel_ecc_protect(struct blocklevel_device *bl, uint32_t start, uint32_
 	 */
 	struct bl_prot_range range = { .start = start, .len = len };
 
-	/*
-	 * Refuse to add regions that are already protected or are partially
-	 * protected
-	 */
-	if (len < BYTES_PER_ECC || ecc_protected(bl, start, len))
+	if (len < BYTES_PER_ECC)
 		return -1;
 	return insert_bl_prot_range(&bl->ecc_prot, range);
 }
