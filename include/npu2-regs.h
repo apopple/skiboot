@@ -18,7 +18,7 @@
 #define __NPU2_REGS_H
 
 #define NPU2_REG_OFFSET(stack, block, offset) \
-	(((stack) << 20) | ((block) << 16) | (offset))
+	((((stack) & 0xf) << 20) | (((block) & 0xf) << 16) | ((offset) & 0xffff))
 
 /* Get the stack number for this register */
 #define NPU2_REG_STACK(reg) \

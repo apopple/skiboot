@@ -99,7 +99,7 @@ static void npu2_scom_set_addr(uint64_t gcid,
 			  uint64_t addr)
 {
 
-#if 0
+#if 1
 	/* FIXME: SIMICS doesn't implement these correctly. You just
 	 * stick the address straight in. */
 	addr = SETFIELD(NPU2_MISC_DA_ADDR, 0ul, addr);
@@ -132,7 +132,7 @@ static uint64_t npu2_scom_read(uint64_t gcid,
 
 static void npu2_write(struct npu2 *p, uint64_t reg, uint64_t val)
 {
-#if 0
+#if 1
 	/* FIXME: SIMICS doesn't seem to support the full MMIO address range */
 	if (p->regs)
 		out_be64(p->regs + reg, val);
@@ -143,7 +143,7 @@ static void npu2_write(struct npu2 *p, uint64_t reg, uint64_t val)
 
 static uint64_t npu2_read(struct npu2 *p, uint64_t reg)
 {
-#if 0
+#if 1
 	/* FIXME: SIMICS doesn't seem to support the full MMIO address range */
 	if (p->regs)
 		return in_be64(p->regs + reg);
@@ -805,7 +805,7 @@ static int64_t npu2_set_pe(struct phb *phb,
 	struct npu2 *p = phb_to_npu2(phb);
 	struct npu2_dev *dev;
 	uint64_t reg, val;
-	int i, index = -1;
+	int index = -1;
 
 	/* Sanity check */
 	if (action != OPAL_MAP_PE && action != OPAL_UNMAP_PE)
@@ -824,28 +824,9 @@ static int64_t npu2_set_pe(struct phb *phb,
 	if (!dev)
 		return OPAL_PARAMETER;
 
-	/* Check if the PE number has been used or not */
-	for (i = 0; i < ARRAY_SIZE(p->bdf2pe_cache) / 2; i++) {
-		val = p->bdf2pe_cache[i];
-		if (!(val & NPU2_CQ_BRICK_BDF2PE_MAP_ENABLE)) {
-			if (index < 0 &&
-			    i >= dev->index * 3 &&
-			    i < (dev->index + 1) * 3)
-				index = i;
-			continue;
-		}
+	/* TODO: Sanity check on PE number */
 
-		if (val & NPU2_CQ_BRICK_BDF2PE_MAP_WILDCARD)
-			return OPAL_PARAMETER;
-
-		if (GETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_PE, val) != pe_num)
-			continue;
-		if (GETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_BDF, val) != bdfn)
-			return OPAL_RESOURCE;
-		else
-			return OPAL_BUSY;
-	}
-
+	index = dev->index;
 	val = NPU2_CQ_BRICK_BDF2PE_MAP_ENABLE;
 	val = SETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_PE, val, pe_num);
 	val = SETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_BDF, val, bdfn);
@@ -856,15 +837,13 @@ static int64_t npu2_set_pe(struct phb *phb,
 	else
 		reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0 + index/2,
 				      NPU2_BLOCK_CTL, NPU2_CQ_BRICK1_BDF2PE_MAP0);
-	p->bdf2pe_cache[i] = val;
 	npu2_write(p, reg, val);
+
 	val = NPU2_MISC_BRICK_BDF2PE_MAP_ENABLE;
 	val = SETFIELD(NPU2_MISC_BRICK_BDF2PE_MAP_PE, val, pe_num);
 	val = SETFIELD(NPU2_MISC_BRICK_BDF2PE_MAP_BDF, val, bdfn);
-
 	reg = NPU2_REG_OFFSET(NPU2_STACK_MISC, NPU2_BLOCK_MISC,
 			      NPU2_MISC_BRICK0_BDF2PE_MAP0 + (index * 8));
-	p->bdf2pe_cache[index + 18] = val;
 	npu2_write(p, reg, val);
 
 	return OPAL_SUCCESS;
@@ -1436,7 +1415,6 @@ static void npu2_create_phb(struct dt_node *dn)
 	p->total_devices = links;
 
 	p->regs = (void *)dt_get_address(dn, 0, NULL);
-
 	prop = dt_require_property(dn, "ibm,mmio-window", -1);
 	assert(prop->len >= (2 * sizeof(uint64_t)));
 	p->mm_base = ((const uint64_t *)prop->prop)[0];
