@@ -67,6 +67,11 @@ struct npu2_dev {
 	struct npu2_bar		*bars[NPU2_BAR_TYPE_MAX];
 	struct npu2		*npu;
 
+	/* Device and function numbers are allocated based on GPU
+	 * association. Links to connected to the same GPU will be
+	 * exposed as different functions of the same bus/device. */
+	uint32_t		bdfn;
+
 	/* PCI virtual device and the associated GPU device */
 	struct pci_virt_device	*pvd;
 	struct phb		*phb;
@@ -84,6 +89,9 @@ struct npu2_dev {
 	uint64_t		procedure_data;
 	unsigned long		procedure_tb;
 	uint32_t		procedure_status;
+
+	/* Used to associate the NPU device with GPU PCI devices */
+	const char		*slot_label;
 };
 
 struct npu2 {

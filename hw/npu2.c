@@ -67,6 +67,11 @@
 	  .bar           = &npu2_bars[idx]				\
 	}
 
+#define VENDOR_CAP_START          0x80
+#define VENDOR_CAP_END	          0x90
+
+#define VENDOR_CAP_PCI_DEV_OFFSET 0x0d
+
 static struct npu2_bar npu2_bars[] = {
 	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_GLOBAL, PHY_BAR,  NPU2_STACK_STCK_2),
 	NPU2_DEFINE_BAR(NPU2_BAR_TYPE_PHY,    PHY_BAR,  NPU2_STACK_STCK_0),
@@ -493,59 +498,65 @@ NPU2_CFG_WRITE(8, u8);
 NPU2_CFG_WRITE(16, u16);
 NPU2_CFG_WRITE(32, u32);
 
-static int __npu2_bind_one_GPU(struct phb *phb __unused,
-			       struct pci_device *pd,
-			       void *data)
+static int __npu2_dev_bind_pci_dev(struct phb *phb __unused,
+				  struct pci_device *pd,
+				  void *data)
 {
 	struct npu2_dev *dev = data;
-	struct dt_node *dn;
-	uint32_t pbcq;
+	struct dt_node *pci_dt_node;
+	char *pcislot;
 
-	/* Ignore non-Nvidia PCI devices */
+	/* Ignore non-nvidia PCI devices */
 	if ((pd->vdid & 0xffff) != 0x10de)
 		return 0;
 
-	/* Find the PCI devices pbcq */
-	for(dn = pd->dn; dn; dn = dn->parent) {
-		if (dt_find_property(dn, "ibm,pbcq"))
-			break;
-	}
-	if (!dn)
+	/* Find the PCI device's slot location */
+	for (pci_dt_node = pd->dn;
+	     pci_dt_node && !dt_find_property(pci_dt_node, "ibm,slot-label");
+	     pci_dt_node = pci_dt_node->parent);
+
+	if (!pci_dt_node)
 		return 0;
 
-	pbcq = dt_prop_get_u32(dev->dt_node, "ibm,npu-pbcq");
-	if (dt_prop_get_u32(dn, "ibm,pbcq") == pbcq)
+	pcislot = (char *)dt_prop_get(pci_dt_node, "ibm,slot-label");
+
+	prlog(PR_DEBUG, "NPU: comparing GPU %s and NPU %s\n",
+	      pcislot, dev->slot_label);
+
+	if (streq(pcislot, dev->slot_label))
 		return 1;
 
 	return 0;
 }
 
-static void npu2_bind_one_GPU(struct npu2_dev *dev)
+static void npu2_dev_bind_pci_dev(struct npu2_dev *dev)
 {
 	struct phb *phb;
-	struct pci_device *pd;
 	uint32_t i;
 
-#define NPU2_PCI_CFG_VENDOR_BIND	0xd
+	if (dev->pd)
+		return;
 
 	for (i = 0; i < 64; i++) {
-		phb = pci_get_phb(i);
-		if (!phb || phb == &dev->npu->phb)
+		if (dev->npu->phb.opal_id == i)
 			continue;
 
-		pd = pci_walk_dev(phb, NULL, __npu2_bind_one_GPU, dev);
-		if (pd) {
+		phb = pci_get_phb(i);
+		if (!phb)
+			continue;
+
+		dev->pd = pci_walk_dev(phb, NULL, __npu2_dev_bind_pci_dev, dev);
+		if (dev->pd) {
 			dev->phb = phb;
-			dev->pd  = pd;
-			PCI_VIRT_CFG_INIT_RO(dev->pvd,
-				dev->vendor_cap + NPU2_PCI_CFG_VENDOR_BIND,
-				1, 0x01);
+			/* Found the device, set the bit in config space */
+			PCI_VIRT_CFG_INIT_RO(dev->pvd, VENDOR_CAP_START +
+				VENDOR_CAP_PCI_DEV_OFFSET, 1, 0x01);
 			return;
 		}
 	}
 
-	prlog(PR_ERR, "%s: NPU device %04x:00:%02x.%01x not binding to PCI device\n",
-	      __func__, dev->npu->phb.opal_id, dev->index / 8, dev->index % 8);
+	prlog(PR_INFO, "%s: No PCI device for NPU device %04x:00:%02x.0 to bind to. If you expect a GPU to be there, this is a problem.\n",
+	      __func__, dev->npu->phb.opal_id, dev->index);
 }
 
 static struct lock pci_npu_phandle_lock = LOCK_UNLOCKED;
@@ -576,7 +587,7 @@ static void npu2_append_phandle(struct dt_node *dn,
 	unlock(&pci_npu_phandle_lock);
 }
 
-static int npu2_bind_GPU(struct phb *phb,
+static int npu2_dn_fixup(struct phb *phb,
 			 struct pci_device *pd,
 			 void *data __unused)
 {
@@ -588,12 +599,15 @@ static int npu2_bind_GPU(struct phb *phb,
 	if (dev->phb || dev->pd)
 		return 0;
 
+	/* NPU devices require a slot location to associate with GPUs */
+	dev->slot_label = dt_prop_get(pd->dn, "ibm,slot-label");
+
 	/* Bind the emulated PCI device with the real one, which can't
 	 * be done until the PCI devices are populated. Once the real
 	 * PCI device is identified, we also need fix the device-tree
 	 * for it
 	 */
-	npu2_bind_one_GPU(dev);
+	npu2_dev_bind_pci_dev(dev);
 	if (dev->phb && dev->pd && dev->pd->dn) {
 		if (dt_find_property(dev->pd->dn, "ibm,npu"))
 			npu2_append_phandle(dev->pd->dn, pd->dn->phandle);
@@ -608,7 +622,7 @@ static int npu2_bind_GPU(struct phb *phb,
 
 static void npu2_phb_final_fixup(struct phb *phb)
 {
-	pci_walk_dev(phb, NULL, npu2_bind_GPU, NULL);
+	pci_walk_dev(phb, NULL, npu2_dn_fixup, NULL);
 }
 
 static void npu2_init_ioda_cache(struct npu2 *p)
@@ -1075,7 +1089,7 @@ static void assign_mmio_bars(uint32_t gcid,
 static void npu2_probe_phb(struct dt_node *dn)
 {
 	struct dt_node *np;
-	uint32_t gcid, scom, index, links;
+	uint32_t gcid, scom, index, phb_index, links;
 	uint64_t reg[2], mm_win[2];
 	char *path;
 
@@ -1083,6 +1097,7 @@ static void npu2_probe_phb(struct dt_node *dn)
 	path = dt_get_path(dn);
 	gcid = dt_get_chip_id(dn);
 	index = dt_prop_get_u32(dn, "ibm,npu-index");
+	phb_index = dt_prop_get_u32(dn, "ibm,phb-index");
 	links = dt_prop_get_u32(dn, "ibm,npu-links");
 	prlog(PR_INFO, "Chip %d Found NPU%d (%d links) at %s\n",
 	      gcid, index, links, path);
@@ -1119,7 +1134,8 @@ static void npu2_probe_phb(struct dt_node *dn)
 				"ibm,ioda2-npu-phb");
 	dt_add_property_strings(np, "device_type", "pciex");
 	dt_add_property(np, "reg", reg, sizeof(reg));
-	dt_add_property_cells(np, "ibm,phb-index", index);
+	dt_add_property_cells(np, "ibm,phb-index", phb_index);
+	dt_add_property_cells(np, "ibm,npu-index", index);
 	dt_add_property_cells(np, "ibm,chip-id", gcid);
 	dt_add_property_cells(np, "ibm,xscom-base", scom);
 	dt_add_property_cells(np, "ibm,npcq", dn->phandle);
@@ -1318,60 +1334,45 @@ static void npu2_populate_cfg(struct npu2_dev *dev)
 	PCI_VIRT_CFG_INIT_RO(pvd, pos + 1, 1, 0);
 }
 
-static uint32_t npu_allocate_bdfn(struct npu2 *p, uint32_t pbcq)
+static uint32_t npu_allocate_bdfn(struct npu2 *p, uint32_t group)
 {
 	int i;
-	int dev = -1;
-	int bdfn = -1;
+	int bdfn = (group << 3);
 
-	/* Find the highest function number alloacted to emulated PCI
-	 * devices associated with this GPU. */
-	for(i = 0; i < p->total_devices; i++) {
-		int dev_bdfn;
-
-		if (!p->devices[i].pvd)
-			continue;
-
-		dev_bdfn = p->devices[i].pvd->bdfn;
-		dev = MAX(dev, dev_bdfn & 0xf8);
-
-		if (dt_prop_get_u32(p->devices[i].dt_node,
-				    "ibm,npu-pbcq") == pbcq)
-			bdfn = MAX(bdfn, dev_bdfn);
+	for (i = 0; i < p->total_devices; i++) {
+		if ((p->devices[i].bdfn & 0xf8) == (bdfn & 0xf8))
+			bdfn++;
 	}
 
-	if (bdfn >= 0)
-		/* Device has already been allocated for this GPU so
-		 * assign the emulated PCI device the next
-		 * function. */
-		return bdfn + 1;
-	else if (dev >= 0)
-		/* Otherwise allocate a new device and allocate
-		 * function 0. */
-		return dev + (1 << 3);
-	else
-		return 0;
+	return bdfn;
 }
 
 static void npu2_populate_devices(struct npu2 *p,
 				  struct dt_node *dn)
 {
 	struct npu2_dev *dev;
-	struct dt_node *pbcq, *link;
+	struct dt_node *npu2_dn, *link;
+	uint32_t npu_phandle, index = 0;
 
-	/* Retrieve the PBCQ device node */
-	pbcq = dt_find_by_phandle(dt_root,
-				  dt_prop_get_u32(dn, "ibm,npcq"));
-	assert(pbcq);
+	/* Get the npu node which has the links which we expand here
+	 * into pci like devices attached to our emulated phb. */
+	npu_phandle = dt_prop_get_u32(dn, "ibm,npcq");
+	npu2_dn = dt_find_by_phandle(dt_root, npu_phandle);
+	assert(npu2_dn);
 
 	/* Walk the link@x nodes to initialize devices */
 	p->total_devices = 0;
 	p->phb.scan_map = 0;
-	dt_for_each_compatible(pbcq, link, "ibm,npu-link") {
-		dev = &p->devices[p->total_devices++];
+	dt_for_each_compatible(npu2_dn, link, "ibm,npu-link") {
+		uint32_t group_id;
+
+		dev = &p->devices[index];
 		dev->npu = p;
 		dev->dt_node = link;
 		dev->index = dt_prop_get_u32(link, "ibm,npu-link-index");
+
+		group_id = dt_prop_get_u32(link, "ibm,npu-group-id");
+		dev->bdfn = npu_allocate_bdfn(p, group_id);
 
 		/* FIXME: These are used by the hardware procedures
 		 * (npu-hw-procedures.c). Need to find the appropriate
@@ -1382,6 +1383,11 @@ static void npu2_populate_devices(struct npu2 *p,
 		//dev->regs = p->regs + NPU2_CQ_SM_MISC_CFG0 +
 		//	     NPU2_STACK_STRIDE * (dev->index >> 1);
 
+		/* This must be done after calling
+		 * npu_allocate_bdfn() */
+		p->total_devices++;
+		p->phb.scan_map |= 0x1 << ((dev->bdfn & 0xf8) >> 3);
+
 		dev->lane_mask = dt_prop_get_u32(link, "ibm,npu-lane-mask");
 
 		/* Populate BARs */
@@ -1390,14 +1396,16 @@ static void npu2_populate_devices(struct npu2 *p,
 		dev->bars[NPU2_BAR_TYPE_GENID] = &npu2_bars[9 + dev->index / 2];
 
 		/* Initialize PCI virtual device */
-		dev->pvd = pci_virt_add_device(&p->phb,
-			npu_allocate_bdfn(p, dt_prop_get_u32(link, "ibm,npu-pbcq")),
-			0x100, dev);
+		dev->pvd = pci_virt_add_device(&p->phb, dev->bdfn, 0x100, dev);
 		if (dev->pvd) {
+			prerror("ADD DEVICE\n");
 			p->phb.scan_map |=
 				0x1 << ((dev->pvd->bdfn & 0xf8) >> 3);
 			npu2_populate_cfg(dev);
-		}
+		} else
+			prerror("NOADD DEVICE\n");
+
+		index++;
 	}
 }
 
