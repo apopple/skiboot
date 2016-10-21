@@ -592,6 +592,7 @@ static int npu2_dn_fixup(struct phb *phb,
 			 void *data __unused)
 {
 	struct npu2 *p = phb_to_npu2(phb);
+	struct dt_node *mem_dn;
 	struct npu2_dev *dev;
 
 	dev = npu2_bdf_to_dev(p, pd->bdfn);
@@ -616,6 +617,15 @@ static int npu2_dn_fixup(struct phb *phb,
 
 		dt_add_property_cells(pd->dn, "ibm,gpu", dev->pd->dn->phandle);
 	}
+
+	/* Add the memory-region nodes.
+	 * TODO: Associate devices with
+	 * the correct memory-region. For the moment we only have a
+	 * single GPU (and hence memory region) though.
+	 */
+	mem_dn = dt_find_compatible_node(dt_root, NULL, "ibm,coherent-device-memory");
+	if (mem_dn)
+		dt_add_property_cells(pd->dn, "memory-region", mem_dn->phandle);
 
 	return 0;
 }
@@ -679,9 +689,54 @@ static int64_t npu2_ioda_reset(struct phb *phb, bool purge)
 	return OPAL_SUCCESS;
 }
 
+static void npu2_create_memory_node(uint64_t addr, uint64_t size)
+{
+	struct dt_node *mem;
+	static u32 chip_id = 100;
+
+	mem = dt_new_addr(dt_root, "memory", addr);
+	assert(mem);
+	dt_add_property_string(mem, "device_type", "memory");
+	dt_add_property_string(mem, "compatible", "ibm,coherent-device-memory");
+	dt_add_property_string(mem, "status", "disabled");
+	dt_add_property_cells(mem, "reg", hi32(addr), lo32(addr),
+			      hi32(size), lo32(size));
+	/* add_chip_dev_associativity(mem) fails, no "ibm,chip-id" in ancestry; */
+	dt_add_property_cells(mem, "ibm,associativity", 4, 0, 0, 0, chip_id);
+
+	chip_id++;
+}
 
 static void npu2_hw_init(struct npu2 *p)
 {
+	uint64_t reg, val;
+	int sm;
+
+	/* TODO: These should already be initialised at boot. For the
+	 * moment set a base address of 0x0000001000000000 and 16GB */
+	val = 0x8001004020380042;
+	for (sm = NPU2_BLOCK_SM_0; sm <= NPU2_BLOCK_SM_3; sm++) {
+		reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0, sm, NPU2_GPU_MEM_BAR);
+		npu2_write(p, reg, val);
+	}
+
+	/* Disable the remaing BARs (simics doesn't seem to set them up anyway?) */
+	val = 0x00400041203A0042;
+	for (sm = NPU2_BLOCK_SM_0; sm <= NPU2_BLOCK_SM_3; sm++) {
+		reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_1, sm, NPU2_GPU_MEM_BAR);
+		npu2_write(p, reg, val);
+	}
+
+	/* Disable the remaing BARs (simics doesn't seem to set them up anyway?) */
+	val = 0x00500041203C0042;
+	for (sm = NPU2_BLOCK_SM_0; sm <= NPU2_BLOCK_SM_3; sm++) {
+		reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_2, sm, NPU2_GPU_MEM_BAR);
+		npu2_write(p, reg, val);
+	}
+
+	/* dummy, for testing purposes */
+	npu2_create_memory_node(0x0000001000000000, 16*1024*1024*1024UL);
+
 	npu2_ioda_reset(&p->phb, false);
 }
 
@@ -1398,12 +1453,10 @@ static void npu2_populate_devices(struct npu2 *p,
 		/* Initialize PCI virtual device */
 		dev->pvd = pci_virt_add_device(&p->phb, dev->bdfn, 0x100, dev);
 		if (dev->pvd) {
-			prerror("ADD DEVICE\n");
 			p->phb.scan_map |=
 				0x1 << ((dev->pvd->bdfn & 0xf8) >> 3);
 			npu2_populate_cfg(dev);
-		} else
-			prerror("NOADD DEVICE\n");
+		}
 
 		index++;
 	}
