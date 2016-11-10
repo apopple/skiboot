@@ -71,6 +71,7 @@ struct npu2_dev {
 	 * association. Links to connected to the same GPU will be
 	 * exposed as different functions of the same bus/device. */
 	uint32_t		bdfn;
+	uint32_t		gpu_bdfn;
 
 	/* PCI virtual device and the associated GPU device */
 	struct pci_virt_device	*pvd;

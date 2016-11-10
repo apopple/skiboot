@@ -616,6 +616,7 @@ static int npu2_dn_fixup(struct phb *phb,
 			dt_add_property_cells(dev->pd->dn, "ibm,npu", pd->dn->phandle);
 
 		dt_add_property_cells(pd->dn, "ibm,gpu", dev->pd->dn->phandle);
+		dev->gpu_bdfn = dev->pd->bdfn;
 	}
 
 	/* Add the memory-region nodes.
@@ -910,7 +911,7 @@ static int64_t npu2_set_pe(struct phb *phb,
 
 		if (GETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_PE, val) != pe_num)
 			continue;
-		if (GETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_BDF, val) != bdfn)
+		if (GETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_BDF, val) != dev->gpu_bdfn)
 			return OPAL_RESOURCE;
 		else
 			return OPAL_BUSY;
@@ -918,7 +919,7 @@ static int64_t npu2_set_pe(struct phb *phb,
 
 	val = NPU2_CQ_BRICK_BDF2PE_MAP_ENABLE;
 	val = SETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_PE, val, pe_num);
-	val = SETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_BDF, val, bdfn);
+	val = SETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_BDF, val, dev->gpu_bdfn);
 
 	if (!(index % 2))
 		reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0 + index/2,
@@ -930,7 +931,7 @@ static int64_t npu2_set_pe(struct phb *phb,
 	npu2_write(p, reg, val);
 	val = NPU2_MISC_BRICK_BDF2PE_MAP_ENABLE;
 	val = SETFIELD(NPU2_MISC_BRICK_BDF2PE_MAP_PE, val, pe_num);
-	val = SETFIELD(NPU2_MISC_BRICK_BDF2PE_MAP_BDF, val, bdfn);
+	val = SETFIELD(NPU2_MISC_BRICK_BDF2PE_MAP_BDF, val, dev->gpu_bdfn);
 
 	reg = NPU2_REG_OFFSET(NPU2_STACK_MISC, NPU2_BLOCK_MISC,
 			      NPU2_MISC_BRICK0_BDF2PE_MAP0 + (index * 8));
