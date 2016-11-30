@@ -104,13 +104,8 @@ static void npu2_scom_set_addr(uint64_t gcid,
 			  uint64_t scom_base,
 			  uint64_t addr)
 {
-
-#if 0
-	/* FIXME: SIMICS doesn't implement these correctly. You just
-	 * stick the address straight in. */
 	addr = SETFIELD(NPU2_MISC_DA_ADDR, 0ul, addr);
 	addr = SETFIELD(NPU2_MISC_DA_LEN, addr, NPU2_MISC_DA_LEN_8B);
-#endif
 
 	xscom_write(gcid, scom_base + NPU2_MISC_SCOM_IND_SCOM_ADDR, addr);
 }
@@ -739,6 +734,10 @@ static void npu2_hw_init(struct npu2 *p)
 	npu2_create_memory_node(0x0000001000000000, 16*1024*1024*1024UL);
 
 	npu2_ioda_reset(&p->phb, false);
+
+	/* Enable XTS retry mode */
+	val = npu2_read(p, NPU2_XTS_CFG);
+	npu2_write(p, NPU2_XTS_CFG, val | NPU2_XTS_CFG_TRY_ATR_RO);
 }
 
 static int64_t npu2_map_pe_dma_window_real(struct phb *phb,
@@ -1719,7 +1718,7 @@ static int opal_npu_map_lpar(uint64_t phb_id, uint64_t bdf, uint64_t lparid,
 {
 	struct phb *phb = pci_get_phb(phb_id);
 	struct npu2 *p = phb_to_npu2(phb);
-	uint64_t xts_bdf_lpar, rc;
+	uint64_t xts_bdf_lpar, rc = OPAL_SUCCESS;
 	int id;
 
 	if (!phb || phb->phb_type != phb_type_npu_v2)
