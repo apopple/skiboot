@@ -776,6 +776,15 @@ static int64_t npu2_ioda_reset(struct phb *phb, bool purge)
 	return OPAL_SUCCESS;
 }
 
+static void npu2_scominit(void)
+{
+	uint32_t gcid = 0;
+
+	/* rx_speed_select=1 */
+	xscom_write(gcid, 0x8009880009010C3F, 0x0000000000000800);
+	xscom_write(gcid, 0x800988000C010C3F, 0x0000000000000800);
+}
+
 static void npu2_hw_init(struct npu2 *p)
 {
 	uint64_t val;
@@ -1628,6 +1637,7 @@ void probe_npu2(void)
 	struct dt_node *np;
 
 	/* Scan NPU XSCOM nodes */
+	npu2_scominit();
 	dt_for_each_compatible(dt_root, np, "ibm,power9-npu")
 		npu2_probe_phb(np);
 
