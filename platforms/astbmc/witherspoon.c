@@ -24,8 +24,6 @@
 
 #include "astbmc.h"
 
-/* Bus, Device, Function is encoded into ST_LOC_DEVFN(x, fn) as where
- * for example 02:0b.0 is x = (0x2 << 5 | 0xb) fn = 0 */
 static const struct slot_table_entry witherspoon_gpu0[] = {
 	{
 		.etype = st_pluggable_slot,
@@ -36,13 +34,6 @@ static const struct slot_table_entry witherspoon_gpu0[] = {
 };
 
 static const struct slot_table_entry witherspoon_gpu1[] = {
-	/* FIXME: Work around for skiboot reserving device numbers for
-	 * down stream links that are down during init. */
-	{
-		.etype = st_pluggable_slot,
-		.location = ST_LOC_DEVFN(0x120,0),
-		.name = "GPU1",
-	},
 	{
 		.etype = st_pluggable_slot,
 		.location = ST_LOC_DEVFN(0xa0,0),
@@ -92,16 +83,19 @@ static const struct slot_table_entry witherspoon_plx0_down[] = {
 		.etype = st_builtin_dev,
 		.location = ST_LOC_DEVFN(0x4a,0),
 		.children = witherspoon_gpu0,
+		.name = "GPU0 down",
 	},
 	{
 		.etype = st_builtin_dev,
 		.location = ST_LOC_DEVFN(0x4b,0),
 		.children = witherspoon_gpu1,
+		.name = "GPU1 down",
 	},
 	{
 		.etype = st_builtin_dev,
 		.location = ST_LOC_DEVFN(0x4c,0),
 		.children = witherspoon_gpu2,
+		.name = "GPU2 down",
 	},
 	{ .etype = st_end },
 };
@@ -111,16 +105,19 @@ static const struct slot_table_entry witherspoon_plx1_down[] = {
 		.etype = st_builtin_dev,
 		.location = ST_LOC_DEVFN(0x44,0),
 		.children = witherspoon_gpu3,
+		.name = "GPU3 down",
 	},
 	{
 		.etype = st_builtin_dev,
 		.location = ST_LOC_DEVFN(0x45,0),
 		.children = witherspoon_gpu4,
+		.name = "GPU4 down",
 	},
 	{
 		.etype = st_builtin_dev,
 		.location = ST_LOC_DEVFN(0x4d,0),
 		.children = witherspoon_gpu5,
+		.name = "GPU5 down",
 	},
 	{ .etype = st_end },
 };
