@@ -36,6 +36,11 @@ static const struct slot_table_entry witherspoon_gpu0[] = {
 static const struct slot_table_entry witherspoon_gpu1[] = {
 	{
 		.etype = st_pluggable_slot,
+		.location = ST_LOC_DEVFN(0x120,0),
+		.name = "GPU1",
+	},
+	{
+		.etype = st_pluggable_slot,
 		.location = ST_LOC_DEVFN(0xa0,0),
 		.name = "GPU1",
 	},
