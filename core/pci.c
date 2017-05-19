@@ -292,6 +292,9 @@ static struct pci_device *pci_scan_one(struct phb *phb, struct pci_device *paren
 	if (platform.pci_get_slot_info)
 		platform.pci_get_slot_info(phb, pd);
 
+	if (pd->slot && pd->slot->disabled)
+		goto fail;
+
 	/* Put it to the child device of list of PHB or parent */
 	if (!parent)
 		list_add_tail(&phb->devices, &pd->link);

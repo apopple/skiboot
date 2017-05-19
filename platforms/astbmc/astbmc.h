@@ -34,7 +34,8 @@ struct slot_table_entry {
 		st_phb,
 		st_pluggable_slot,
 		st_builtin_dev,
-		st_npu_slot
+		st_npu_slot,
+		st_disabled_slot,
 	} etype;
 	uint32_t location;
 	const char *name;

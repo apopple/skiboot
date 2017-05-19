@@ -26,7 +26,7 @@
 
 static const struct slot_table_entry witherspoon_gpu0[] = {
 	{
-		.etype = st_pluggable_slot,
+		.etype = st_disabled_slot,
 		.location = ST_LOC_DEVFN(0x80,0),
 		.name = "GPU0",
 	},
@@ -34,11 +34,6 @@ static const struct slot_table_entry witherspoon_gpu0[] = {
 };
 
 static const struct slot_table_entry witherspoon_gpu1[] = {
-	{
-		.etype = st_pluggable_slot,
-		.location = ST_LOC_DEVFN(0x120,0),
-		.name = "GPU1",
-	},
 	{
 		.etype = st_pluggable_slot,
 		.location = ST_LOC_DEVFN(0xa0,0),
@@ -49,7 +44,7 @@ static const struct slot_table_entry witherspoon_gpu1[] = {
 
 static const struct slot_table_entry witherspoon_gpu2[] = {
 	{
-		.etype = st_pluggable_slot,
+		.etype = st_disabled_slot,
 		.location = ST_LOC_DEVFN(0xc0,0),
 		.name = "GPU2",
 	},
@@ -58,7 +53,7 @@ static const struct slot_table_entry witherspoon_gpu2[] = {
 
 static const struct slot_table_entry witherspoon_gpu3[] = {
 	{
-		.etype = st_pluggable_slot,
+		.etype = st_disabled_slot,
 		.location = ST_LOC_DEVFN(0x60,0),
 		.name = "GPU3",
 	},
@@ -67,7 +62,7 @@ static const struct slot_table_entry witherspoon_gpu3[] = {
 
 static const struct slot_table_entry witherspoon_gpu4[] = {
 	{
-		.etype = st_pluggable_slot,
+		.etype = st_disabled_slot,
 		.location = ST_LOC_DEVFN(0x80,0),
 		.name = "GPU4",
 	},
@@ -76,7 +71,7 @@ static const struct slot_table_entry witherspoon_gpu4[] = {
 
 static const struct slot_table_entry witherspoon_gpu5[] = {
 	{
-		.etype = st_pluggable_slot,
+		.etype = st_disabled_slot,
 		.location = ST_LOC_DEVFN(0xa0,0),
 		.name = "GPU5",
 	},
@@ -243,18 +238,18 @@ static void create_link(struct dt_node *npu, int group, int index)
 	dt_add_property_string(link, "compatible", "ibm,npu-link");
 	dt_add_property_cells(link, "ibm,npu-link-index", index);
 
-	if (!(index % 2))
+	if (!(index / 3))
 		phy = NPU_INDIRECT0;
 	else
 		phy = NPU_INDIRECT1;
 
 	switch (index % 3) {
 	case 0:
-		lane_mask = 0x78f;
+		lane_mask = 0x00078f;
 		break;
 
 	case 1:
-		lane_mask = 0x1870;
+		lane_mask = 0x0e1870;
 		break;
 
 	case 2:

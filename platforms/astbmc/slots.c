@@ -202,6 +202,7 @@ void slot_table_get_slot_info(struct phb *phb, struct pci_device *pd)
 
 	pluggable = !!(ent->etype == st_pluggable_slot);
 	init_slot_info(slot, pluggable, (void *)ent);
+	slot->disabled = !!(ent->etype == st_disabled_slot);
 }
 
 static int __pci_find_dev_by_location(struct phb *phb,
@@ -273,6 +274,7 @@ static int check_slot_table(struct phb *phb,
 			}
 			break;
 		case st_end:
+		case st_disabled_slot:
 		case st_npu_slot:
 			break;
 		}
