@@ -26,7 +26,7 @@
 
 static const struct slot_table_entry witherspoon_gpu0[] = {
 	{
-		.etype = st_disabled_slot,
+		.etype = st_pluggable_slot,
 		.location = ST_LOC_DEVFN(0x80,0),
 		.name = "GPU0",
 	},
@@ -44,7 +44,7 @@ static const struct slot_table_entry witherspoon_gpu1[] = {
 
 static const struct slot_table_entry witherspoon_gpu2[] = {
 	{
-		.etype = st_disabled_slot,
+		.etype = st_pluggable_slot,
 		.location = ST_LOC_DEVFN(0xc0,0),
 		.name = "GPU2",
 	},
@@ -53,7 +53,7 @@ static const struct slot_table_entry witherspoon_gpu2[] = {
 
 static const struct slot_table_entry witherspoon_gpu3[] = {
 	{
-		.etype = st_disabled_slot,
+		.etype = st_pluggable_slot,
 		.location = ST_LOC_DEVFN(0x60,0),
 		.name = "GPU3",
 	},
@@ -62,7 +62,7 @@ static const struct slot_table_entry witherspoon_gpu3[] = {
 
 static const struct slot_table_entry witherspoon_gpu4[] = {
 	{
-		.etype = st_disabled_slot,
+		.etype = st_pluggable_slot,
 		.location = ST_LOC_DEVFN(0x80,0),
 		.name = "GPU4",
 	},
@@ -71,7 +71,7 @@ static const struct slot_table_entry witherspoon_gpu4[] = {
 
 static const struct slot_table_entry witherspoon_gpu5[] = {
 	{
-		.etype = st_disabled_slot,
+		.etype = st_pluggable_slot,
 		.location = ST_LOC_DEVFN(0xa0,0),
 		.name = "GPU5",
 	},
