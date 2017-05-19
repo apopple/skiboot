@@ -783,6 +783,10 @@ static void npu2_scominit(void)
 	/* rx_speed_select=1 */
 	xscom_write(gcid, 0x8009880009010C3F, 0x0000000000000800);
 	xscom_write(gcid, 0x800988000C010C3F, 0x0000000000000800);
+
+	/* MCD registers */
+	xscom_write(gcid, 0x0301100D, 0x8000fffc0001c000 | (gcid << 16));
+	xscom_write(gcid, 0x0301140D, 0x80007ffc0001a000 | (gcid << 16));
 }
 
 static void npu2_hw_init(struct npu2 *p)
