@@ -297,9 +297,17 @@ DEFINE_PROCEDURE(phy_reset, phy_reset_wait, phy_reset_complete);
 
 static uint32_t phy_tx_zcal(struct npu2_dev *ndev)
 {
-	if (ndev->npu->tx_zcal_complete[ndev->index % 3])
-		return PROCEDURE_COMPLETE;
-	ndev->npu->tx_zcal_complete[ndev->index % 3] = 1;
+	if (ndev->index < 3) {
+		if (ndev->npu->tx_zcal_complete[0])
+			return PROCEDURE_COMPLETE;
+		else
+			ndev->npu->tx_zcal_complete[0] = 1;
+	} else {
+		if (ndev->npu->tx_zcal_complete[1])
+			return PROCEDURE_COMPLETE;
+		else
+			ndev->npu->tx_zcal_complete[1] = 1;
+	}
 
 	/* Turn off SW enable and enable zcal state machine */
 	phy_write(ndev, &NPU2_PHY_TX_ZCAL_SWO_EN, 0);
