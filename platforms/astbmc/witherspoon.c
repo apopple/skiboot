@@ -245,7 +245,7 @@ static void create_link(struct dt_node *npu, int group, int index)
 
 	switch (index % 3) {
 	case 0:
-		lane_mask = 0x00078f;
+		lane_mask = 0xf1e000;
 		break;
 
 	case 1:
@@ -253,7 +253,7 @@ static void create_link(struct dt_node *npu, int group, int index)
 		break;
 
 	case 2:
-		lane_mask = 0xf1e000;
+		lane_mask = 0x00078f;
 		break;
 
 	default:
