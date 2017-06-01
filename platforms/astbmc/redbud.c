@@ -45,7 +45,7 @@ static const struct slot_table_entry witherspoon_gpu1[] = {
 static const struct slot_table_entry witherspoon_gpu2[] = {
 	{
 		.etype = st_pluggable_slot,
-		.location = ST_LOC_DEVFN(0xc0,0),
+		.location = ST_LOC_DEVFN(0x60,0),
 		.name = "GPU2",
 	},
 	{ .etype = st_end },
@@ -54,26 +54,8 @@ static const struct slot_table_entry witherspoon_gpu2[] = {
 static const struct slot_table_entry witherspoon_gpu3[] = {
 	{
 		.etype = st_pluggable_slot,
-		.location = ST_LOC_DEVFN(0x60,0),
-		.name = "GPU3",
-	},
-	{ .etype = st_end },
-};
-
-static const struct slot_table_entry witherspoon_gpu4[] = {
-	{
-		.etype = st_pluggable_slot,
 		.location = ST_LOC_DEVFN(0x80,0),
-		.name = "GPU4",
-	},
-	{ .etype = st_end },
-};
-
-static const struct slot_table_entry witherspoon_gpu5[] = {
-	{
-		.etype = st_pluggable_slot,
-		.location = ST_LOC_DEVFN(0xa0,0),
-		.name = "GPU5",
+		.name = "GPU3",
 	},
 	{ .etype = st_end },
 };
@@ -91,12 +73,6 @@ static const struct slot_table_entry witherspoon_plx0_down[] = {
 		.children = witherspoon_gpu1,
 		.name = "GPU1 down",
 	},
-	{
-		.etype = st_builtin_dev,
-		.location = ST_LOC_DEVFN(0x4c,0),
-		.children = witherspoon_gpu2,
-		.name = "GPU2 down",
-	},
 	{ .etype = st_end },
 };
 
@@ -104,20 +80,14 @@ static const struct slot_table_entry witherspoon_plx1_down[] = {
 	{
 		.etype = st_builtin_dev,
 		.location = ST_LOC_DEVFN(0x44,0),
-		.children = witherspoon_gpu3,
-		.name = "GPU3 down",
+		.children = witherspoon_gpu2,
+		.name = "GPU2 down",
 	},
 	{
 		.etype = st_builtin_dev,
 		.location = ST_LOC_DEVFN(0x45,0),
-		.children = witherspoon_gpu4,
-		.name = "GPU4 down",
-	},
-	{
-		.etype = st_builtin_dev,
-		.location = ST_LOC_DEVFN(0x4d,0),
-		.children = witherspoon_gpu5,
-		.name = "GPU5 down",
+		.children = witherspoon_gpu3,
+		.name = "GPU3 down",
 	},
 	{ .etype = st_end },
 };
@@ -169,11 +139,6 @@ static const struct slot_table_entry witherspoon_npu0_slots[] = {
 		.location = ST_LOC_NPU_GROUP(1),
 		.name = "GPU1",
 	},
-	{
-		.etype = st_npu_slot,
-		.location = ST_LOC_NPU_GROUP(2),
-		.name = "GPU2",
-	},
 	{ .etype = st_end },
 };
 
@@ -181,17 +146,12 @@ static const struct slot_table_entry witherspoon_npu8_slots[] = {
 	{
 		.etype = st_npu_slot,
 		.location = ST_LOC_NPU_GROUP(0),
-		.name = "GPU3",
+		.name = "GPU2",
 	},
 	{
 		.etype = st_npu_slot,
 		.location = ST_LOC_NPU_GROUP(1),
-		.name = "GPU4",
-	},
-	{
-		.etype = st_npu_slot,
-		.location = ST_LOC_NPU_GROUP(2),
-		.name = "GPU5",
+		.name = "GPU3",
 	},
 	{ .etype = st_end },
 };
@@ -284,10 +244,10 @@ static void dt_create_npu2(void)
 
 		create_link(npu, 0, 0);
 		create_link(npu, 0, 1);
-		create_link(npu, 1, 2);
+		create_link(npu, 0, 2);
 		create_link(npu, 1, 3);
-		create_link(npu, 2, 4);
-		create_link(npu, 2, 5);
+		create_link(npu, 1, 4);
+		create_link(npu, 1, 5);
 	}
 }
 
@@ -295,6 +255,12 @@ static bool witherspoon_probe(void)
 {
 	if (!dt_node_is_compatible(dt_root, "ibm,witherspoon"))
 		return false;
+
+	prerror("********************************************************************************\n");
+	prerror("*     README: THIS BUILD IS ONLY FOR SYSTEMS SUPPORTING A MAXIMUM OF 4 GPUS    *\n");
+	prerror("*                                                                              *\n");
+	prerror("*       !!! THIS BUILD WILL NOT WORK ON SYSTEMS WHICH SUPPORT 6 GPUS !!!       *\n");
+	prerror("********************************************************************************\n");
 
 	/* Lot of common early inits here */
 	astbmc_early_init();
