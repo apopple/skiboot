@@ -597,7 +597,17 @@ static int npu2_assign_gmb(struct npu2_dev *ndev)
 
 	/* Base address is in GB */
 	base >>= 30;
-	val = SETFIELD(NPU2_MEM_BAR_SEL_MEM, 0ULL, 4);
+
+	reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0 + NPU2DEV_STACK(ndev),
+			      NPU2_BLOCK_SM_0,
+			      NPU2_GPU0_MEM_BAR);
+
+	val = npu2_read(p, reg);
+	old_val = val;
+	if (NPU2DEV_BRICK(ndev))
+		val <<= 32;
+
+	val = SETFIELD(NPU2_MEM_BAR_SEL_MEM, val, 4);
 	val = SETFIELD(NPU2_MEM_BAR_NODE_ADDR, val, base);
 	val = SETFIELD(NPU2_MEM_BAR_GROUP | NPU2_MEM_BAR_CHIP, val, p->chip_id);
 	val = SETFIELD(NPU2_MEM_BAR_POISON, val, 1);
@@ -631,13 +641,7 @@ static int npu2_assign_gmb(struct npu2_dev *ndev)
 	mode += ndev->bdfn & 0x7;
 	val = SETFIELD(NPU2_MEM_BAR_MODE, val, mode);
 	if (NPU2DEV_BRICK(ndev))
-		val >>= 32;
-	reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0 + NPU2DEV_STACK(ndev),
-			      NPU2_BLOCK_SM_0,
-			      NPU2_GPU0_MEM_BAR);
-
-	old_val = npu2_read(p, reg);
-	val |= old_val;
+		val = (old_val & 0xffffffff00000000) | (val >> 32);
 
 	npu2_write(p, reg, val);
 	reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0 + NPU2DEV_STACK(ndev),
