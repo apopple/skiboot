@@ -773,6 +773,15 @@ static int64_t npu2_ioda_reset(struct phb *phb, bool purge)
 	return OPAL_SUCCESS;
 }
 
+static int xscom_write_mask(int32_t chip_id, uint64_t addr, uint64_t val, uint64_t mask)
+{
+	uint64_t old_val;
+
+	old_val = xscom_read(chip_id, addr, &old_val);
+	val = (old_val & ~mask) | (val & mask);
+	return xscom_write(chip_id, addr, val);
+}
+
 static void npu2_hw_init(struct npu2 *p)
 {
 	int i;
@@ -829,6 +838,31 @@ static void npu2_hw_init(struct npu2 *p)
 		val = SETFIELD(PPC_BITMASK(33, 63), val, addr >> 25);
 		xscom_write(p->chip_id, MCD1_BANK0_CN3, val);
 	}
+
+	xscom_write_mask(p->chip_id, 0x5011000, PPC_BIT(58), PPC_BIT(58));
+	xscom_write_mask(p->chip_id, 0x5011030, PPC_BIT(58), PPC_BIT(58));
+	xscom_write_mask(p->chip_id, 0x5011060, PPC_BIT(58), PPC_BIT(58));
+	xscom_write_mask(p->chip_id, 0x5011090, PPC_BIT(58), PPC_BIT(58));
+	xscom_write_mask(p->chip_id, 0x5011200, PPC_BIT(58), PPC_BIT(58));
+	xscom_write_mask(p->chip_id, 0x5011230, PPC_BIT(58), PPC_BIT(58));
+	xscom_write_mask(p->chip_id, 0x5011260, PPC_BIT(58), PPC_BIT(58));
+	xscom_write_mask(p->chip_id, 0x5011290, PPC_BIT(58), PPC_BIT(58));
+	xscom_write_mask(p->chip_id, 0x5011400, PPC_BIT(58), PPC_BIT(58));
+	xscom_write_mask(p->chip_id, 0x5011430, PPC_BIT(58), PPC_BIT(58));
+	xscom_write_mask(p->chip_id, 0x5011460, PPC_BIT(58), PPC_BIT(58));
+	xscom_write_mask(p->chip_id, 0x5011490, PPC_BIT(58), PPC_BIT(58));
+	xscom_write_mask(p->chip_id, 0x50110c0, PPC_BIT(53), PPC_BIT(53));
+	xscom_write_mask(p->chip_id, 0x50112c0, PPC_BIT(53), PPC_BIT(53));
+	xscom_write_mask(p->chip_id, 0x50114c0, PPC_BIT(53), PPC_BIT(53));
+	xscom_write_mask(p->chip_id, 0x50110f1, PPC_BIT(41), PPC_BIT(41));
+	xscom_write_mask(p->chip_id, 0x50112f1, PPC_BIT(41), PPC_BIT(41));
+	xscom_write_mask(p->chip_id, 0x50114f1, PPC_BIT(41), PPC_BIT(41));
+	xscom_write_mask(p->chip_id, 0x5011110, PPC_BIT(0), PPC_BIT(0));
+	xscom_write_mask(p->chip_id, 0x5011130, PPC_BIT(0), PPC_BIT(0));
+	xscom_write_mask(p->chip_id, 0x5011310, PPC_BIT(0), PPC_BIT(0));
+	xscom_write_mask(p->chip_id, 0x5011330, PPC_BIT(0), PPC_BIT(0));
+	xscom_write_mask(p->chip_id, 0x5011510, PPC_BIT(0), PPC_BIT(0));
+	xscom_write_mask(p->chip_id, 0x5011530, PPC_BIT(0), PPC_BIT(0));
 }
 
 static int64_t npu2_map_pe_dma_window_real(struct phb *phb,
