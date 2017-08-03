@@ -760,10 +760,6 @@ static int64_t npu2_ioda_reset(struct phb *phb, bool purge)
 	struct npu2 *p = phb_to_npu2(phb);
 	uint32_t i;
 
-	printf("%p\n", phb);
-	printf("%p\n", p);
-	printf("%p\n", p->regs);
-	while(1);
 	if (purge) {
 		NPU2DBG(p, "Purging all IODA tables...\n");
 		npu2_init_ioda_cache(p);
@@ -772,19 +768,9 @@ static int64_t npu2_ioda_reset(struct phb *phb, bool purge)
 	/* TVT */
 	npu2_ioda_sel(p, NPU2_ATS_IODA_TBL_TVT, 0, true);
 	for (i = 0; i < ARRAY_SIZE(p->tve_cache); i++)
-		//out_be64(p->regs + NPU2_ATS_IODA_DATA, p->tve_cache[i]);
-		printf("out_be64(%p, %llx)", p->regs + NPU2_ATS_IODA_DATA, p->tve_cache[i]);
+		out_be64(p->regs + NPU2_ATS_IODA_DATA, p->tve_cache[i]);
 
 	return OPAL_SUCCESS;
-}
-
-static int xscom_write_mask(int32_t chip_id, uint64_t addr, uint64_t val, uint64_t mask)
-{
-	uint64_t old_val;
-
-	old_val = xscom_read(chip_id, addr, &old_val);
-	val = (old_val & ~mask) | (val & mask);
-	return xscom_write(chip_id, addr, val);
 }
 
 static void npu2_hw_init(struct npu2 *p)
@@ -793,7 +779,6 @@ static void npu2_hw_init(struct npu2 *p)
 	uint64_t val, size, addr, gpu_min_addr, gpu_max_addr, total_size;
 
 	npu2_ioda_reset(&p->phb, false);
-	prerror("HERE\n");
 
 	/* Enable XTS retry mode */
 	val = npu2_read(p, NPU2_XTS_CFG);
@@ -1251,31 +1236,33 @@ static void npu2_probe_phb(struct dt_node *dn)
 		return;
 	}
 
-	xscom_write_mask(gcid, 0x5011000, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(gcid, 0x5011030, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(gcid, 0x5011060, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(gcid, 0x5011090, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(gcid, 0x5011200, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(gcid, 0x5011230, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(gcid, 0x5011260, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(gcid, 0x5011290, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(gcid, 0x5011400, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(gcid, 0x5011430, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(gcid, 0x5011460, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(gcid, 0x5011490, PPC_BIT(58), PPC_BIT(58));
+	if (!is_p9dd1()) {
+		xscom_write_mask(gcid, 0x5011000, PPC_BIT(58), PPC_BIT(6) | PPC_BIT(58));
+		xscom_write_mask(gcid, 0x5011030, PPC_BIT(58), PPC_BIT(6) | PPC_BIT(58));
+		xscom_write_mask(gcid, 0x5011060, PPC_BIT(58), PPC_BIT(6) | PPC_BIT(58));
+		xscom_write_mask(gcid, 0x5011090, PPC_BIT(58), PPC_BIT(6) | PPC_BIT(58));
+		xscom_write_mask(gcid, 0x5011200, PPC_BIT(58), PPC_BIT(6) | PPC_BIT(58));
+		xscom_write_mask(gcid, 0x5011230, PPC_BIT(58), PPC_BIT(6) | PPC_BIT(58));
+		xscom_write_mask(gcid, 0x5011260, PPC_BIT(58), PPC_BIT(6) | PPC_BIT(58));
+		xscom_write_mask(gcid, 0x5011290, PPC_BIT(58), PPC_BIT(6) | PPC_BIT(58));
+		xscom_write_mask(gcid, 0x5011400, PPC_BIT(58), PPC_BIT(6) | PPC_BIT(58));
+		xscom_write_mask(gcid, 0x5011430, PPC_BIT(58), PPC_BIT(6) | PPC_BIT(58));
+		xscom_write_mask(gcid, 0x5011460, PPC_BIT(58), PPC_BIT(6) | PPC_BIT(58));
+		xscom_write_mask(gcid, 0x5011490, PPC_BIT(58), PPC_BIT(6) | PPC_BIT(58));
 
-	xscom_write_mask(gcid, 0x50110c0, PPC_BIT(53), PPC_BIT(53));
-	xscom_write_mask(gcid, 0x50112c0, PPC_BIT(53), PPC_BIT(53));
-	xscom_write_mask(gcid, 0x50114c0, PPC_BIT(53), PPC_BIT(53));
-	xscom_write_mask(gcid, 0x50110f1, PPC_BIT(41), PPC_BIT(41));
-	xscom_write_mask(gcid, 0x50112f1, PPC_BIT(41), PPC_BIT(41));
-	xscom_write_mask(gcid, 0x50114f1, PPC_BIT(41), PPC_BIT(41));
-	xscom_write_mask(gcid, 0x5011110, PPC_BIT(0), PPC_BIT(0));
-	xscom_write_mask(gcid, 0x5011130, PPC_BIT(0), PPC_BIT(0));
-	xscom_write_mask(gcid, 0x5011310, PPC_BIT(0), PPC_BIT(0));
-	xscom_write_mask(gcid, 0x5011330, PPC_BIT(0), PPC_BIT(0));
-	xscom_write_mask(gcid, 0x5011510, PPC_BIT(0), PPC_BIT(0));
-	xscom_write_mask(gcid, 0x5011530, PPC_BIT(0), PPC_BIT(0));
+		xscom_write_mask(gcid, 0x50110c0, PPC_BIT(53), PPC_BIT(53));
+		xscom_write_mask(gcid, 0x50112c0, PPC_BIT(53), PPC_BIT(53));
+		xscom_write_mask(gcid, 0x50114c0, PPC_BIT(53), PPC_BIT(53));
+		xscom_write_mask(gcid, 0x50110f1, PPC_BIT(41), PPC_BIT(41));
+		xscom_write_mask(gcid, 0x50112f1, PPC_BIT(41), PPC_BIT(41));
+		xscom_write_mask(gcid, 0x50114f1, PPC_BIT(41), PPC_BIT(41));
+		xscom_write_mask(gcid, 0x5011110, PPC_BIT(0), PPC_BIT(0));
+		xscom_write_mask(gcid, 0x5011130, PPC_BIT(0), PPC_BIT(0));
+		xscom_write_mask(gcid, 0x5011310, PPC_BIT(0), PPC_BIT(0));
+		xscom_write_mask(gcid, 0x5011330, PPC_BIT(0), PPC_BIT(0));
+		xscom_write_mask(gcid, 0x5011510, PPC_BIT(0), PPC_BIT(0));
+		xscom_write_mask(gcid, 0x5011530, PPC_BIT(0), PPC_BIT(0));
+	}
 
 	index = dt_prop_get_u32(dn, "ibm,npu-index");
 	phb_index = dt_prop_get_u32(dn, "ibm,phb-index");
